@@ -148,9 +148,10 @@ export function createHudChatPanel({
     initialText: "",
     submitOnEnter: true,
     wrapLines: true,
-    onSubmit: (text) => {
-      void send(text);
-      return "";
+    onSubmit: async (text) => {
+      const sent = await send(text);
+      // Keep failed sends and any draft edited while the send was in flight.
+      if (sent && !disposed && editor.getText() === text) editor.setText("");
     },
   });
 

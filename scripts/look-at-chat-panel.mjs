@@ -175,6 +175,45 @@ try {
   step('captured keys never reach an earlier scene listener', inputResult.unconsumed.length === 0, inputResult.unconsumed.join(', '));
   step('Enter sends the text typed through the composer', inputResult.sent);
 
+  const draftText = () => page.evaluate(() => {
+    const panel = globalThis.__haloChatPanel;
+    const hud = globalThis.__haloChatExample.hudSystem.hud;
+    return hud.ui.data[panel.windowKeys().composer + 'Lines'].map(entry => entry.sourceText ?? entry.text).join('\n');
+  });
+  step('a successful send clears SAY and keeps focus', await draftText() === '' && await page.evaluate(() => globalThis.__haloChatPanel.isTyping()));
+
+  await page.evaluate(() => globalThis.__haloChatPanel.setTransport({
+    async send() { throw new Error('Simulated send failure'); },
+  }));
+  await page.keyboard.type('Keep this failed message');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => {
+    const panel = globalThis.__haloChatPanel;
+    return globalThis.__haloChatExample.hudSystem.hud.ui.data[panel.windowKeys().transcript + 'Lines']
+      .some(entry => entry.text === 'Simulated send failure');
+  });
+  step('a failed send preserves SAY', await draftText() === 'Keep this failed message');
+
+  await page.evaluate(() => globalThis.__haloChatPanel.setTransport({
+    send: () => new Promise(resolve => { globalThis.__finishDemoSend = resolve; }),
+  }));
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('Pending message');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => typeof globalThis.__finishDemoSend === 'function');
+  await page.keyboard.type(' plus a new edit');
+  await page.evaluate(() => globalThis.__finishDemoSend());
+  step('send completion preserves edits made while sending', await draftText() === 'Pending message plus a new edit');
+  await page.evaluate(() => {
+    let notify = () => {};
+    globalThis.__haloChatPanel.setTransport({
+      subscribe(listener) { notify = listener; listener({ messages: [], status: 'live' }); return () => {}; },
+      async send(body) {
+        notify({ messages: [{ id: 'browser-message', authorUserId: 'test-author', body, createdAt: new Date().toISOString() }], status: 'live' });
+      },
+    });
+  });
+
   await page.keyboard.press('Escape');
   step('Escape ends text entry', !(await page.evaluate(() => globalThis.__haloChatPanel.isTyping())));
   const beforeWalking = await pose();
