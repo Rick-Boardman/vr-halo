@@ -78,6 +78,15 @@ page.on('console', (message) => {
 });
 
 try {
+  await page.addInitScript(() => {
+    globalThis.__unconsumedDemoKeys = [];
+    // Installed before Halo: a focused editor must still run first in capture.
+    window.addEventListener('keydown', event => {
+      if (/^[wasdqerftgzxc]$/i.test(event.key) || /^(Arrow|Enter|Escape|Backspace|Delete|Home|End)/.test(event.key)) {
+        globalThis.__unconsumedDemoKeys.push(event.key);
+      }
+    });
+  });
   await page.goto(`${origin}/examples/chat-panel/`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => Boolean(globalThis.__haloChatPanel), null, { timeout: 30000 });
   step('the scene boots and the panel exists', true, 'createSceneHudBootstrap + createHudChatPanel');
@@ -104,6 +113,101 @@ try {
     return Boolean(gl) && canvas.width > 0 && canvas.height > 0;
   });
   step('the canvas has a live WebGL context', painted, 'a HUD with no context draws nothing');
+
+  const layout = await page.evaluate(() => {
+    const { hudSystem } = globalThis.__haloChatExample;
+    const keys = globalThis.__haloChatPanel.windowKeys();
+    const windows = hudSystem.hud.ui.windows;
+    const transcript = windows[keys.transcript], composer = windows[keys.composer], help = windows.help;
+    return {
+      adjacent: composer.x === transcript.x && composer.y === transcript.y + transcript.h + 12,
+      separate: help.x >= transcript.x + transcript.w,
+      helpVisible: help.y >= 0 && !help.collapsed,
+    };
+  });
+  step('SAY sits directly below TABLE ONE', layout.adjacent);
+  step('HELP is open in a separate column', layout.separate && layout.helpVisible);
+
+  async function clickComposer() {
+    const point = await page.evaluate(() => {
+      const hud = globalThis.__haloChatExample.hudSystem.hud;
+      const composer = hud.ui.windows[globalThis.__haloChatPanel.windowKeys().composer];
+      const rect = document.querySelector('canvas').getBoundingClientRect();
+      return {
+        x: rect.left + (composer.x + 40) / hud.layoutW * rect.width,
+        y: rect.top + (composer.y + 50) / hud.layoutH * rect.height,
+      };
+    });
+    await page.mouse.click(point.x, point.y);
+    await page.waitForFunction(() => globalThis.__haloChatPanel.isTyping());
+  }
+  const pose = () => page.evaluate(() => {
+    const { rig, look } = globalThis.__haloChatExample;
+    return { position: rig.player.position.toArray(), yaw: look.getYaw(), pitch: look.getPitch(), roll: look.getRoll() };
+  });
+  await clickComposer();
+  const beforeTyping = await pose();
+  await page.keyboard.type('wasd qerf tg zxc', { delay: 25 });
+  for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Backspace', 'Delete']) await page.keyboard.press(key);
+  await page.keyboard.press('Control+a');
+  const typedMessage = 'Typed in SAY: wasd qerf tg zxc';
+  await page.keyboard.type(typedMessage, { delay: 15 });
+  const pasteDefaultPreserved = await page.evaluate(() => {
+    const event = new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true });
+    window.dispatchEvent(event);
+    return !event.defaultPrevented;
+  });
+  step('desktop paste keeps its browser default', pasteDefaultPreserved);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  const inputResult = await page.evaluate(message => {
+    const panel = globalThis.__haloChatPanel;
+    const example = globalThis.__haloChatExample;
+    const entries = example.hudSystem.hud.ui.data[panel.windowKeys().transcript + 'Lines'];
+    return {
+      sent: entries.some(entry => entry.text === message),
+      autoWalk: example.navigation.autoWalk,
+      unconsumed: globalThis.__unconsumedDemoKeys.slice(),
+    };
+  }, typedMessage);
+  step('typing and editing do not move or rotate the scene', JSON.stringify(beforeTyping) === JSON.stringify(await pose()));
+  step('typing X does not toggle auto-walk', inputResult.autoWalk === false);
+  step('captured keys never reach an earlier scene listener', inputResult.unconsumed.length === 0, inputResult.unconsumed.join(', '));
+  step('Enter sends the text typed through the composer', inputResult.sent);
+
+  await page.keyboard.press('Escape');
+  step('Escape ends text entry', !(await page.evaluate(() => globalThis.__haloChatPanel.isTyping())));
+  const beforeWalking = await pose();
+  await page.keyboard.down('w');
+  await page.waitForTimeout(200);
+  await page.keyboard.up('w');
+  step('navigation works again outside the editor', JSON.stringify(beforeWalking.position) !== JSON.stringify((await pose()).position));
+
+  await page.keyboard.down('w');
+  await clickComposer();
+  await page.waitForTimeout(100);
+  await page.keyboard.up('w');
+  await page.keyboard.press('Escape');
+  const releasedPose = await pose();
+  await page.waitForTimeout(180);
+  step('a key released while typing cannot remain latched', JSON.stringify(releasedPose) === JSON.stringify(await pose()));
+  await clickComposer();
+  await page.evaluate(() => globalThis.__haloChatPanel.close());
+  step('closing the panel releases text focus', !(await page.evaluate(() => globalThis.__haloChatPanel.isTyping())));
+  await page.evaluate(() => globalThis.__haloChatPanel.open());
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(150);
+  const mobileLayout = await page.evaluate(() => {
+    const hud = globalThis.__haloChatExample.hudSystem.hud;
+    const keys = globalThis.__haloChatPanel.windowKeys();
+    const a = hud.ui.windows[keys.transcript], b = hud.ui.windows[keys.composer], help = hud.ui.windows.help;
+    return b.y >= a.y + a.h && help.y >= b.y + b.h
+      && [a,b,help].every(w => w.x >= 0 && w.x + w.w <= hud.layoutW && w.y + w.h <= hud.layoutH);
+  });
+  step('a phone-sized viewport stacks the panels without overlap', mobileLayout);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(150);
 
   // Send through the panel's own API — the same call the composer's Enter key
   // makes — and watch the transport's list grow.

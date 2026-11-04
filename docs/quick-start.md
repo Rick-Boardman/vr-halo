@@ -22,6 +22,11 @@ transport, renders it through Halo's frame loop, and exposes the panel for
 inspection. It sends nothing to a server. Replace the fake transport with an
 application-owned transport when integrating a real service.
 
+TABLE ONE and SAY share the left column; SAY sits directly below the transcript.
+HELP opens on the right with keyboard and mouse navigation. Narrow viewports stack
+the panels. Click SAY to type, press Enter to send, and Escape or click away to
+return to scene navigation. Text-editing keys are consumed by the focused editor.
+
 ## Install a versioned package in another application
 
 ```sh

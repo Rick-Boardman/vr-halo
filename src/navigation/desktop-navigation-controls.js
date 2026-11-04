@@ -260,7 +260,10 @@ class DesktopNavigationControls {
 
   tick(dt) {
     if (this.renderer.xr.isPresenting) return
-    if (this._isTyping()) return
+    if (this._isTyping()) {
+      this.keysDown.clear()
+      return
+    }
     if (!this._isEnabled()) return
 
     this._applyKeyboardRotation(dt)
@@ -478,6 +481,7 @@ class DesktopNavigationControls {
   }
 
   _onKeyDown(event) {
+    if (event.defaultPrevented) return
     if (this._isTyping()) return
 
     this._setKey(event, true)
@@ -494,7 +498,7 @@ class DesktopNavigationControls {
   }
 
   _onKeyUp(event) {
-    if (this._isTyping()) return
+    // A key released after focus moved into an editor must not stay latched.
     this._setKey(event, false)
     this._publishDesktopKeyProve("up", event)
   }

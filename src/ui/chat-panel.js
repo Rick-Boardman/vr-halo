@@ -32,7 +32,7 @@
  *
  * Parameters: see createHudChatPanel below.
  * Return value: a handle with `open`, `close`, `toggle`, `isOpen`, `send`,
- * `setTransport`, `refresh` and `dispose`.
+ * `setTransport`, `refresh`, `isTyping` and `dispose`.
  * Side effects: creates two HUD windows (transcript and composer), subscribes
  * to the transport, and creates a Troika-backed text editor for the composer.
  */
@@ -80,7 +80,7 @@ function clockText(value) {
  * @param {object} [options.colors] Overrides for {author, body, meta, system, trouble}.
  * @param {(userId: string) => string} [options.nameFor] Author id -> display name.
  * @param {boolean} [options.open=true] Whether to show the panel immediately.
- * @returns {{open: () => void, close: () => void, toggle: () => void, isOpen: () => boolean, send: (text: string) => Promise<boolean>, setTransport: (transport: object | null) => void, refresh: () => void, dispose: () => void}}
+ * @returns {{open: () => void, close: () => void, toggle: () => void, isOpen: () => boolean, isTyping: () => boolean, send: (text: string) => Promise<boolean>, setTransport: (transport: object | null) => void, refresh: () => void, dispose: () => void}}
  */
 export function createHudChatPanel({
   hudSystem,
@@ -247,6 +247,7 @@ export function createHudChatPanel({
 
   function close() {
     opened = false;
+    editor.blur();
     hudSystem.setWindowHidden(transcriptKey, true);
     hudSystem.setWindowHidden(composerKey, true);
   }
@@ -260,6 +261,7 @@ export function createHudChatPanel({
     close,
     toggle: () => (opened ? close() : open()),
     isOpen: () => opened,
+    isTyping: () => opened && editor.isTyping(),
     send,
     setTransport: (next) => attach(next),
     refresh: render,

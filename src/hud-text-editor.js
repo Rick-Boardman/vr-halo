@@ -721,6 +721,7 @@ export function createHudTextEditor({
       && ((submitOnEnter && !e.ctrlKey && !e.metaKey)
         || (submitOnMetaEnter && (e.ctrlKey || e.metaKey)));
     if (wantsSubmitOnEnter) {
+      e.stopImmediatePropagation();
       try {
         onSubmit?.(joinLines(lines));
       } catch {
@@ -730,13 +731,19 @@ export function createHudTextEditor({
       return;
     }
     if (e.key === "Escape") {
+      e.stopImmediatePropagation();
       blur();
       e.preventDefault();
       return;
     }
-    if (handleClipboardShortcut(e)) return;
+    if (handleClipboardShortcut(e)) {
+      // Desktop paste keeps its browser default so the paste event still fires.
+      e.stopImmediatePropagation();
+      return;
+    }
     const ch = safeChar(e);
     if (ch != null) {
+      e.stopImmediatePropagation();
       if (readOnly) {
         e.preventDefault();
         return;
@@ -749,10 +756,12 @@ export function createHudTextEditor({
       e.preventDefault();
       return;
     }
-    handleEditCommand(e);
+    if (handleEditCommand(e)) e.stopImmediatePropagation();
   }
 
-  window.addEventListener("keydown", onKeyDown);
+  // Handle focused text input before scene-level keyboard listeners, including
+  // listeners on window that were installed before this editor.
+  window.addEventListener("keydown", onKeyDown, true);
 
   function onPaste(e) {
     if (!focused) return;
@@ -963,7 +972,7 @@ export function createHudTextEditor({
 
   function dispose() {
     systemKeyboard.close();
-    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("paste", onPaste);
     window.removeEventListener("mousemove", onMouseMove);
     window.removeEventListener("mouseup", onMouseUp);

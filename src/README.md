@@ -185,6 +185,12 @@ const panel = createHudChatPanel({
 panel.toggle();
 ```
 
+Pass `isTyping: () => panel?.isTyping() ?? false` to the scene bootstrap when
+wiring a panel after scene creation. The chat panel exposes its editor's focus
+state; closing the panel releases focus. The focused HUD editor handles accepted
+keyboard events in capture phase and stops them before scene listeners, while
+desktop paste retains its browser default.
+
 The transport contract in full is at the top of
 [`ui/chat-panel.js`](./ui/chat-panel.js). A message is
 `{ id, authorUserId, body, createdAt }` and a view is

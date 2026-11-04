@@ -43,7 +43,7 @@ function createFakeTransport() {
 
 const canvas = document.getElementById("c");
 
-const { renderer, scene, camera, hudSystem, navigation } = createSceneHudBootstrap({
+const { renderer, scene, camera, hudSystem, navigation, rig, look } = createSceneHudBootstrap({
   THREE,
   canvas,
   buildWorld: ({ scene }) => {
@@ -62,7 +62,7 @@ const { renderer, scene, camera, hudSystem, navigation } = createSceneHudBootstr
     scene.add(table);
     return [table];
   },
-  hudOptions: { uiPreset: "minimal" },
+  hudOptions: { uiPreset: "minimal", visibleWindowKeys: ["help", "hotbar", "xr"] },
   isTyping: () => Boolean(globalThis.__haloChatPanel?.isTyping?.()),
 });
 
@@ -70,12 +70,12 @@ const panel = createHudChatPanel({
   hudSystem,
   renderer,
   transport: createFakeTransport(),
-  key: "chat",
+  key: "table-one",
   title: "TABLE ONE",
-  // Clear of the built-in STATUS window, which the HUD parks top-centre. An
-  // app chooses where its panels live; Halo only refuses the reserved KEYS.
+  // Use an application-owned key so the built-in CHAT layout cannot move
+  // the transcript away from its composer.
   x: 24,
-  y: 380,
+  y: 24,
   w: 460,
   h: 260,
 });
@@ -83,10 +83,51 @@ const panel = createHudChatPanel({
 // Exposed so the headless check can drive the panel the way a person would —
 // and so a human poking at the console can too.
 globalThis.__haloChatPanel = panel;
+globalThis.__haloChatExample = { hudSystem, navigation, rig, look };
+
+hudSystem.ensureSharedWindow("help");
+hudSystem.toggleHelp();
+hudSystem.setHelpExtraLines([
+  { text: "Z/C = roll" },
+  { text: "Click SAY to type; Enter sends." },
+  { text: "Escape leaves text entry." },
+]);
+hudSystem.setWindowHidden("debug", true);
+
+let layoutSize = "";
+function layoutDemoPanels() {
+  if (renderer.xr.isPresenting) return;
+  const { layoutW: width, layoutH: height, ui } = hudSystem.hud;
+  const size = width + "x" + height;
+  if (size === layoutSize && ui._layoutInitialized) return;
+  hudSystem.update(0);
+  layoutSize = size;
+  const margin = 16;
+  const gap = 12;
+  const columns = width >= 960;
+  const panelWidth = columns ? Math.min(460, (width - margin * 3) / 2) : width - margin * 2;
+  const keys = panel.windowKeys();
+  const transcript = ui.windows[keys.transcript];
+  const composer = ui.windows[keys.composer];
+  Object.assign(transcript, { x: margin, y: margin, w: panelWidth, h: columns ? 260 : 180 });
+  Object.assign(composer, { x: margin, y: transcript.y + transcript.h + gap, w: panelWidth, h: 110 });
+  const help = ui.windows.help;
+  const helpY = columns ? margin : composer.y + composer.h + gap;
+  Object.assign(help, {
+    x: columns ? width - panelWidth - margin : margin,
+    y: helpY,
+    w: panelWidth,
+    h: Math.max(220, Math.min(520, height - helpY - 100)),
+  });
+  hudSystem.bringToFront(keys.composer);
+}
 
 startAnimationLoop({
   renderer,
   THREE,
   maxDelta: 0.05,
-  onFrame: ({ dt }) => renderHudFrame({ renderer, scene, camera, dt, hudSystem, navigation }),
+  onFrame: ({ dt }) => {
+    layoutDemoPanels();
+    renderHudFrame({ renderer, scene, camera, dt, hudSystem, navigation });
+  },
 });
