@@ -98,7 +98,7 @@ const HUD_TEXT_EDITOR_SELECTION_OPACITY_BLURRED_DEFAULT = 0.45;
  * @param {boolean} [options.submitOnEnter=false] When true, plain Enter submits instead of inserting a newline.
  * @param {boolean} [options.submitOnMetaEnter=false] When true, Ctrl/Cmd+Enter submits instead of inserting a newline.
  * @returns {{focus: () => void, blur: () => void, isTyping: () => boolean, isSystemKeyboardSupported: () => boolean, setText: (text: string) => void, getText: () => string, pasteFromClipboard: () => Promise<boolean>, dispose: () => void}} Editor controller exposing focus/blur, text getters and setters, immersive system-keyboard detection, clipboard paste, typing state, and disposal hooks.
- * Side effects: validates required renderer and HUD handles, mutates HUD window text plus caret state, registers window keyboard and paste listeners and a renderer-canvas mouse listener, creates a temporary invisible DOM textarea for supported immersive system keyboards, starts and clears caret timers, reads clipboard contents when available, and invokes `onDirty` after editor state changes.
+ * Side effects: validates required renderer and HUD handles, mutates HUD window text plus caret state, registers window keyboard and paste listeners and renderer-canvas pointer and mouse listeners, creates a temporary invisible DOM textarea for supported immersive system keyboards, starts and clears caret timers, reads clipboard contents when available, and invokes `onDirty` after editor state changes.
  */
 export function createHudTextEditor({
   renderer,
@@ -909,6 +909,17 @@ export function createHudTextEditor({
     render();
   }
 
+  function onPointerDown(e) {
+    if (renderer.xr.isPresenting || !focused) return;
+    if (Number.isFinite(e?.button) && e.button !== 0) return;
+    const p = clientToHudPoint(e.clientX, e.clientY);
+    if (!p || isPointInsideEditorWindow(p.x, p.y)) return;
+    // Release focus before navigation handles this same pointerdown. Waiting
+    // for mousedown would discard the first world drag while still typing.
+    mouseSelectionActive = false;
+    blur();
+  }
+
   function onMouseDown(e) {
     if (renderer.xr.isPresenting) return;
     if (Number.isFinite(e?.button) && e.button !== 0) return;
@@ -938,11 +949,6 @@ export function createHudTextEditor({
     else if (isPointInsideEditorWindow(p.x, p.y)) {
       mouseSelectionActive = false;
     }
-    // Click-away blur: clicking anywhere else should drop editor focus.
-    else if (focused) {
-      mouseSelectionActive = false;
-      blur();
-    }
   }
 
   function onMouseMove(e) {
@@ -971,6 +977,7 @@ export function createHudTextEditor({
     mouseSelectionActive = false;
   }
 
+  renderer.domElement.addEventListener("pointerdown", onPointerDown, { capture: true, passive: true });
   renderer.domElement.addEventListener("mousedown", onMouseDown, { passive: true });
   window.addEventListener("mousemove", onMouseMove, { passive: true });
   window.addEventListener("mouseup", onMouseUp, { passive: true });
@@ -982,6 +989,7 @@ export function createHudTextEditor({
     window.removeEventListener("mousemove", onMouseMove);
     window.removeEventListener("mouseup", onMouseUp);
     try {
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
       renderer.domElement.removeEventListener("mousedown", onMouseDown);
     } catch {
       // no-op

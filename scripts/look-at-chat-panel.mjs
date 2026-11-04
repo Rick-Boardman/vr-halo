@@ -140,6 +140,7 @@ try {
     });
     await page.mouse.click(point.x, point.y);
     await page.waitForFunction(() => globalThis.__haloChatPanel.isTyping());
+    return point;
   }
   const pose = () => page.evaluate(() => {
     const { rig, look } = globalThis.__haloChatExample;
@@ -237,6 +238,36 @@ try {
 
   await page.keyboard.press('Escape');
   step('Escape ends text entry', !(await page.evaluate(() => globalThis.__haloChatPanel.isTyping())));
+
+  await clickComposer();
+  // Let the HUD process the editor click before moving into the world.
+  await page.waitForTimeout(100);
+  const beforeWorldDrag = await pose();
+  const worldPoint = await page.evaluate(() => {
+    const rect = document.querySelector('canvas').getBoundingClientRect();
+    return { x: rect.left + rect.width * 0.5, y: rect.top + rect.height * 0.7 };
+  });
+  await page.mouse.move(worldPoint.x, worldPoint.y);
+  step('SAY still has focus when the world drag begins',
+    await page.evaluate(() => globalThis.__haloChatPanel.isTyping()));
+  await page.mouse.down();
+  await page.mouse.move(worldPoint.x + 80, worldPoint.y + 30, { steps: 4 });
+  await page.mouse.up();
+  const afterWorldDrag = await pose();
+  step('the first world drag after typing releases focus and rotates the scene',
+    !(await page.evaluate(() => globalThis.__haloChatPanel.isTyping()))
+      && beforeWorldDrag.yaw !== afterWorldDrag.yaw && beforeWorldDrag.pitch !== afterWorldDrag.pitch);
+
+  const editorPoint = await clickComposer();
+  const beforeEditorDrag = await pose();
+  await page.mouse.down();
+  await page.mouse.move(editorPoint.x + 80, editorPoint.y, { steps: 4 });
+  await page.mouse.up();
+  step('dragging text in SAY keeps focus and does not rotate the scene',
+    await page.evaluate(() => globalThis.__haloChatPanel.isTyping())
+      && JSON.stringify(beforeEditorDrag) === JSON.stringify(await pose()));
+  await page.keyboard.press('Escape');
+
   const beforeWalking = await pose();
   await page.keyboard.down('w');
   await page.waitForTimeout(200);

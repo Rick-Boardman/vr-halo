@@ -26,6 +26,7 @@ TABLE ONE and SAY share the left column; SAY sits directly below the transcript.
 HELP opens on the right with keyboard and mouse navigation. Narrow viewports stack
 the panels. Click SAY to type, press Enter to send, and Escape or click away to
 return to scene navigation. Text-editing keys are consumed by the focused editor.
+Clicking and dragging the world releases SAY and looks around on that first drag.
 A successful send clears SAY and keeps it focused for the next message. Failed
 sends keep the draft, and a delayed send never clears text edited while waiting.
 
