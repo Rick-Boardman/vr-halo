@@ -1,0 +1,12 @@
+Halo
+Copyright 2026 Richard Boardman
+
+Licensed under the Apache License, Version 2.0.
+See LICENSE for the complete terms.
+
+This distribution includes Inter and Noto font files under SIL Open Font
+License 1.1 and unicode-font-resolver data under MIT. Their copyright notices,
+full license texts, and provenance are in src/assets/LICENSES/ and THIRD_PARTY.md.
+These components retain their original licenses.
+
+This NOTICE provides attribution information and does not add license conditions.

@@ -1,0 +1,69 @@
+{
+  "name": "@rb/halo",
+  "version": "0.2.0",
+  "description": "Browser-native Three.js and WebXR runtime with scene, navigation, input, and WebGL HUD primitives.",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Richard Boardman",
+  "exports": {
+    ".": "./src/core.js",
+    "./core": "./src/core.js",
+    "./hud": "./src/hud.js",
+    "./navigation": "./src/navigation/index.js",
+    "./tiles": "./src/tiles/index.js",
+    "./ui": "./src/ui/index.js",
+    "./ui/editor": "./src/ui/editor/index.js",
+    "./curve-surface": "./src/curve-surface.js",
+    "./xr": "./src/xr/index.js",
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "src",
+    "docs",
+    "examples",
+    "README.md",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY.md",
+    "DELIVERY.md",
+    "HUD-WINDOW-SKINNING.md",
+    "SYSTEM-KEYBOARD.md"
+  ],
+  "sideEffects": false,
+  "peerDependencies": {
+    "three": "0.160.1",
+    "troika-three-text": "^0.52.4"
+  },
+  "devDependencies": {
+    "three": "0.160.1",
+    "troika-three-text": "0.52.4",
+    "playwright": "1.62.1"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "node scripts/check-relative-imports.mjs",
+    "check:exports": "node scripts/check-exports.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "build": "npm run check && npm run check:exports && npm test",
+    "pack:deliverable": "node scripts/pack-deliverable.mjs",
+    "start": "node scripts/serve.mjs",
+    "test:browser": "node scripts/look-at-chat-panel.mjs",
+    "audit:release": "node scripts/audit-release.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rick-Boardman/vr-halo.git"
+  },
+  "homepage": "https://github.com/Rick-Boardman/vr-halo#readme",
+  "bugs": {
+    "url": "https://github.com/Rick-Boardman/vr-halo/issues"
+  },
+  "packageManager": "npm@11.17.0"
+}
