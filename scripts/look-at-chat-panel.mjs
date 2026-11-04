@@ -146,6 +146,27 @@ try {
     return { position: rig.player.position.toArray(), yaw: look.getYaw(), pitch: look.getPitch(), roll: look.getRoll() };
   });
   await clickComposer();
+  let expectedWord = '';
+  for (const key of 'test') {
+    await page.keyboard.press(key);
+    expectedWord += key;
+    const editorState = await page.evaluate(() => {
+      const panel = globalThis.__haloChatPanel;
+      const hud = globalThis.__haloChatExample.hudSystem.hud;
+      const key = panel.windowKeys().composer;
+      return {
+        text: hud.ui.data[key + 'Lines'].map(entry => entry.sourceText ?? entry.text).join('\n'),
+        selected: !!hud.ui.windows[key]._textSelection?.visible,
+        caret: !!hud.ui.windows[key]._textCaret?.visible,
+        focused: panel.isTyping(),
+      };
+    });
+    step('click then type ' + expectedWord + ' retains the text and caret',
+      editorState.text === expectedWord && !editorState.selected && editorState.caret && editorState.focused,
+      JSON.stringify(editorState));
+  }
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Backspace');
   const beforeTyping = await pose();
   await page.keyboard.type('wasd qerf tg zxc', { delay: 25 });
   for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Backspace', 'Delete']) await page.keyboard.press(key);

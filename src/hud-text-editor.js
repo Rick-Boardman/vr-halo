@@ -222,7 +222,12 @@ export function createHudTextEditor({
 
   function deleteSelectionIfAny() {
     const r = getSelectionRange();
-    if (!r) return false;
+    if (!r) {
+      // A click may leave a collapsed selection anchor. Do not let insertion
+      // turn that old anchor into a selection of the newly typed character.
+      clearSelection();
+      return false;
+    }
 
     const { startX, startY, endX, endY } = r;
     if (startY === endY) {
