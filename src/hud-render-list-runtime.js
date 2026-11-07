@@ -830,16 +830,21 @@ export function createHudRenderListRuntime({
             button._trailingIconReservedWidth = 0;
           }
 
+          const textInset = Number.isFinite(button.textInsetPx)
+            ? clamp(Number(button.textInsetPx), 4, Math.max(4, buttonW - 4))
+            : Math.max(4, Math.floor(buttonW * 0.28));
+          const textX = nextX + textInset;
+          const textY = buttonY + Math.max(1, Math.floor((footerButtonH - lineH) * 0.25));
           if (hasButtonText && label?.setRenderOrder && label?.setText) {
             try {
               label.setRenderOrder(roBase + 20);
               label.setText({
                 text: String(button.text ?? ""),
-                x: nextX + Math.max(4, Math.floor(buttonW * 0.28)),
-                y: buttonY + Math.max(1, Math.floor((footerButtonH - lineH) * 0.25)),
+                x: textX,
+                y: textY,
                 dot: buttonDot,
                 color: typeof button.textColor === "number" ? Number(button.textColor) >>> 0 : 0xffffff,
-                maxWidth: Math.max(6, buttonW - 8 - Math.max(0, Number(button._trailingIconReservedWidth) || 0)),
+                maxWidth: Math.max(6, buttonW - textInset - 4 - Math.max(0, Number(button._trailingIconReservedWidth) || 0)),
                 truncateSingleLine: true,
               });
               if (label?.mesh) label.mesh.visible = true;
@@ -852,12 +857,17 @@ export function createHudRenderListRuntime({
 
           objs._footerActionMeta.push({
             text: button.text,
+            sourceText: typeof button.sourceText === "string" ? button.sourceText : String(button.text ?? ""),
             onClick: button.onClick,
             hoverText: button.hoverText,
             x: nextX,
             y: buttonY,
             w: buttonW,
             h: footerButtonH,
+            textX,
+            textY,
+            dot: buttonDot,
+            labelObject: label,
           });
 
           nextX += buttonW + HUD_FOOTER_ACTION_GAP_PX;
@@ -873,7 +883,7 @@ export function createHudRenderListRuntime({
     let selectionColorRanges = null;
     try {
       const sel = win._textSelection;
-      if (sel && sel.visible && sel.target !== "actionButton" && Array.isArray(slice)) {
+      if (sel && sel.visible && sel.target !== "actionButton" && sel.target !== "footer" && Array.isArray(slice)) {
         const starts = new Array(displayTexts.length);
         let acc = 0;
         for (let i = 0; i < displayTexts.length; i++) {
@@ -1258,6 +1268,52 @@ export function createHudRenderListRuntime({
         const col = Math.floor(Number(caret.col));
         const cwPx = Math.max(1, Math.floor((caret.wPx ?? labelDot) || labelDot));
 
+        if (caret.target === "footer") {
+          const button = Array.isArray(objs._footerActionMeta) ? objs._footerActionMeta[0] : null;
+          if (!button || !Number.isFinite(button.textX) || !Number.isFinite(button.textY)) {
+            objs.caret.visible = false;
+          } else {
+            const sourceText = String(button.sourceText ?? "");
+            const dot = Number.isFinite(button.dot) ? Number(button.dot) : Math.max(1, labelDot * 0.85);
+            const cc = clamp(Number.isFinite(col) ? col : 0, 0, sourceText.length);
+            let x0 = button.textX + estimateTextWidthPx(sourceText.slice(0, cc), dot);
+            let y0 = button.textY;
+            let h0 = 12 * dot;
+            const tri = button.labelObject?._textMesh?.textRenderInfo;
+            const renderedText = typeof tri?.parameters?.text === "string" ? tri.parameters.text : "";
+            const cps = tri?.caretPositions;
+            const topNudge = (7 * dot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
+            if (cps && sourceText.length > 0 && renderedText === sourceText) {
+              const idx = clamp(cc, 0, renderedText.length);
+              const base = idx >= renderedText.length
+                ? Math.max(0, (renderedText.length - 1) * 4)
+                : idx * 4;
+              const xLocal = idx >= renderedText.length ? cps[base + 1] : cps[base];
+              const bottom = cps[base + 2];
+              const top = cps[base + 3];
+              if (Number.isFinite(xLocal) && Number.isFinite(bottom) && Number.isFinite(top)) {
+                x0 = button.textX + xLocal;
+                y0 = button.textY - top - topNudge;
+                h0 = Math.max(1, top - bottom);
+              }
+            }
+            if (objs.caret.material?.color && caret.color != null) {
+              objs.caret.material.color.setHex(Number(caret.color) >>> 0);
+            }
+            positionRect(objs.caret, x0, y0, cwPx, h0, 0.00415 + lift);
+            objs.caret.visible = true;
+          }
+          if (typeof post === "function") post();
+          if (!win._externalScrollControl) {
+            placeScrollbar(totalLines, visibleLines, win.scrollTop, totalLines > visibleLines);
+          } else {
+            const extTotal = win._scrollTotalLines || 0;
+            const extVisible = win._scrollVisibleLines || 0;
+            placeScrollbar(extTotal, extVisible, win.scrollTop || 0, extTotal > extVisible);
+          }
+          return;
+        }
+
         if (caret.target === "actionButton") {
           const localRow = row - win.scrollTop;
           const button = localRow >= 0 && localRow < objs._visibleLineMeta.length
@@ -1474,6 +1530,8 @@ function normalizeFooterActions(entries) {
         textColor: typeof entry.actionButtonTextColor === "number" ? entry.actionButtonTextColor : null,
         bgColor: typeof entry.actionButtonBgColor === "number" ? entry.actionButtonBgColor : null,
         bgOpacity: Number.isFinite(entry.actionButtonBgOpacity) ? Number(entry.actionButtonBgOpacity) : null,
+        textInsetPx: Number.isFinite(entry.actionButtonTextInsetPx) ? Number(entry.actionButtonTextInsetPx) : null,
+        sourceText: typeof entry.actionButtonSourceText === "string" ? entry.actionButtonSourceText : null,
       };
     })
     .filter(Boolean);

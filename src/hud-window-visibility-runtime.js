@@ -115,6 +115,38 @@ export function createHudWindowVisibilityRuntime({
     markDirty();
   }
 
+  function toggleSettings() {
+    const w = hud?.ui?.windows?.settings;
+    if (!w) return;
+
+    const isHidden = Number(w.y) < -1000;
+
+    if (isHidden) {
+      if (renderer.xr.isPresenting) {
+        w.collapsed = !!w._settingsHiddenCollapsed;
+        w.x = Math.round(hud.layoutW * 0.5 - w.w * 0.5);
+        w.y = Math.round(hud.layoutH * 0.5 - w.h * 0.5);
+      } else {
+        w.collapsed = !!w._settingsHiddenCollapsed;
+        const x = Number.isFinite(w._settingsHiddenX) ? Number(w._settingsHiddenX) : Number(w.x);
+        const y = Number.isFinite(w._settingsHiddenY) ? Number(w._settingsHiddenY) : Number(w.y);
+        w.x = x;
+        w.y = y;
+
+        const h = w.collapsed ? titleHeightPx : w.h;
+        w.x = clamp(w.x, 0, Math.max(0, hud.layoutW - w.w));
+        w.y = clamp(w.y, 0, Math.max(0, hud.layoutH - h));
+      }
+    } else {
+      w._settingsHiddenX = Number(w.x);
+      w._settingsHiddenY = Number(w.y);
+      w._settingsHiddenCollapsed = !!w.collapsed;
+      w.x = hiddenX;
+      w.y = hiddenY;
+    }
+    markDirty();
+  }
+
   function restoreAllHidden() {
     const windows = hud?.ui?.windows;
     if (!windows) return false;
@@ -122,7 +154,7 @@ export function createHudWindowVisibilityRuntime({
     for (const key of Object.keys(windows)) {
       const w = windows[key];
       if (!w || Number(w.y) >= -1000) continue;
-      if (key === "help") continue;
+      if (key === "help" || key === "settings") continue;
       toggleWindow(key);
       restored = true;
     }
@@ -134,6 +166,7 @@ export function createHudWindowVisibilityRuntime({
     setWindowHidden,
     toggleWindow,
     toggleHelp,
+    toggleSettings,
     restoreAllHidden,
   };
 }

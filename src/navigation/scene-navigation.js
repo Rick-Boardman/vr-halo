@@ -328,6 +328,7 @@ export function createSceneNavigation({
     THREE,
     renderer,
     camera,
+    scene,
     player,
     getYaw,
     getPitch,

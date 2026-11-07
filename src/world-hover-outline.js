@@ -281,6 +281,31 @@ export function createWorldHoverOutline({
     }
   }
 
+  let lastClientX = Number.NaN;
+  let lastClientY = Number.NaN;
+  let lastWorldSig = 0;
+
+  function mixSig(hash, elements) {
+    if (!elements) return hash;
+    let next = hash;
+    next = (Math.imul(next, 33) + Math.round(elements[12] * 50)) | 0;
+    next = (Math.imul(next, 33) + Math.round(elements[13] * 50)) | 0;
+    next = (Math.imul(next, 33) + Math.round(elements[14] * 50)) | 0;
+    next = (Math.imul(next, 33) + Math.round(elements[0] * 50)) | 0;
+    next = (Math.imul(next, 33) + Math.round(elements[5] * 50)) | 0;
+    return next;
+  }
+
+  function worldSignature() {
+    let hash = mixSig(1, camera?.matrixWorld?.elements);
+    const src = getResolvedPickables();
+    const list = Array.isArray(src) ? src : [];
+    for (let i = 0; i < list.length; i += 1) {
+      hash = mixSig(hash, list[i]?.matrixWorld?.elements);
+    }
+    return hash;
+  }
+
   function updateFromClientPoint(clientX, clientY) {
     if (renderer.xr.isPresenting) {
       clear();
@@ -294,8 +319,18 @@ export function createWorldHoverOutline({
 
     if (isClientOverHud(clientX, clientY)) {
       clear();
+      lastClientX = clientX;
+      lastClientY = clientY;
       return;
     }
+
+    const worldSig = worldSignature();
+    if (clientX === lastClientX && clientY === lastClientY && worldSig === lastWorldSig) {
+      return;
+    }
+    lastClientX = clientX;
+    lastClientY = clientY;
+    lastWorldSig = worldSig;
 
     const pointerNdc = getClientPointNdc(clientX, clientY, renderer.domElement);
     if (!pointerNdc) {

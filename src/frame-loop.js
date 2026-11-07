@@ -101,7 +101,7 @@ export function renderHudFrame({
     // no-op
   }
 
-  // Navigation overlay pass (e.g. facing crosshair) rendered last.
+  // Facing crosshair lives in the main scene. renderOverlay is a no-op for that mark.
   try {
     navigation?.renderOverlay?.();
   } catch {

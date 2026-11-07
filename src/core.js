@@ -38,3 +38,11 @@ export { renderHudFrame } from "./frame-loop.js";
  * Side effects: none in this barrel; side effects are those of startAnimationLoop when callers invoke it.
  */
 export { startAnimationLoop } from "./frame-loop.js";
+
+/**
+ * Purpose: Re-export the graphics calibration controller from the runtime core entrypoint.
+ * Parameters: see createQualityCalibration in ./quality-calibration.js.
+ * Return value: forwards the calibration controller. tickQualityCalibrations advances every started controller.
+ * Side effects: none in this barrel. Starting a controller changes the renderer pixel ratio and writes halo.graphics.v1.
+ */
+export { createQualityCalibration, tickQualityCalibrations } from "./quality-calibration.js";

@@ -8,6 +8,7 @@ import {
   HUD_HOTBAR_SLOT_COUNT,
   HUD_SYSTEM_HOTBAR_DEBUG_SLOT_INDEX,
   HUD_SYSTEM_HOTBAR_HELP_SLOT_INDEX,
+  HUD_SYSTEM_HOTBAR_SETTINGS_SLOT_INDEX,
 } from "./hud-hotbar-policy.js";
 import { HUD_PRIMARY_HIGHLIGHT_COLOR } from "./hud-highlight-style.js";
 import { HUD_SURFACE_ACCENT_COLOR } from "./hud-surface-style.js";
@@ -58,6 +59,7 @@ export function createHudHotbarRuntime({
   reserveSystemHotbarSlots = true,
   toggleHelp = null,
   toggleDebug = null,
+  toggleSettings = null,
   markDirty = null,
 } = {}) {
   const slots = Number.isFinite(hotbarSlotCount)
@@ -454,6 +456,8 @@ export function createHudHotbarRuntime({
       hud.ui.data.hotbarActiveIndex = -1;
     }
 
+    claimSettingsSlot(items, tips);
+
     const helpItem = helpIdx >= 0 ? items[helpIdx] : null;
     const debugItem = dbgIdx >= 0 ? items[dbgIdx] : null;
     const appOwnsTailSlots = helpItem?.systemSlot === false || debugItem?.systemSlot === false;
@@ -486,12 +490,35 @@ export function createHudHotbarRuntime({
     syncHotbarWindowSize();
   }
 
+  function claimSettingsSlot(items, tips) {
+    if (!shouldReserveSystemHotbarSlots || slots !== HUD_HOTBAR_SLOT_COUNT) return;
+    const idx = HUD_SYSTEM_HOTBAR_SETTINGS_SLOT_INDEX;
+    if (idx < 0 || idx >= items.length) return;
+    const existing = items[idx];
+    if (existing && existing.systemSlot !== "graphics") return;
+    tips[idx] = "Graphics and sound";
+    items[idx] = {
+      ...(existing ?? {}),
+      systemSlot: "graphics",
+      tooltip: "Graphics and sound",
+      shortLabel: "GFX",
+      iconText: "GFX",
+      outlineColor: existing?.outlineColor ?? HUD_SURFACE_ACCENT_COLOR,
+      activeOutlineColor: existing?.activeOutlineColor ?? HUD_PRIMARY_HIGHLIGHT_COLOR,
+    };
+  }
+
   function handleSystemHotbarSlot(idx) {
     if (!shouldReserveSystemHotbarSlots) return false;
     const item = Array.isArray(hud?.ui?.data?.hotbarItems)
       ? hud.ui.data.hotbarItems[idx] ?? null
       : null;
     if (item?.systemSlot === false) return false;
+    if (item?.systemSlot === "graphics") {
+      if (typeof toggleSettings === "function") toggleSettings();
+      if (typeof markDirty === "function") markDirty();
+      return true;
+    }
     const { helpIdx, dbgIdx } = getSystemHotbarSlotIndices();
     if (idx === helpIdx) {
       if (typeof toggleHelp === "function") toggleHelp();

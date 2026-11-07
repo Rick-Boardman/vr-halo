@@ -86,6 +86,7 @@ export function createHudClickRuntime({
   exitVR,
   toggleWindow = null,
   toggleHelp = null,
+  toggleSettings = null,
   restoreAllHidden = null,
 } = {}) {
   function findVisibleLineIndex(meta, localY, lineH) {
@@ -257,7 +258,9 @@ export function createHudClickRuntime({
                 })()
               : key === "help" && typeof toggleHelp === "function"
                 ? (toggleHelp(), true)
-                : typeof toggleWindow === "function"
+                : key === "settings" && typeof toggleSettings === "function"
+                  ? (toggleSettings(), true)
+                  : typeof toggleWindow === "function"
                   ? (toggleWindow(key), true)
                   : typeof w.close === "function"
                     ? w.close({ pointer: { x: px, y: py }, windowKey: key })

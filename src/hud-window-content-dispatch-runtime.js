@@ -284,18 +284,16 @@ export function createHudWindowContentDispatchRuntime({
           ? "OFF"
           : "N/A";
 
-      // The Status window shows only the app's own lines by default (from
-      // Aether Forge, 2026-10: a status is not a frame counter; the default
-      // since the October 2026 defaults). `hud.ui.data.hideStatusDebug = false`
-      // brings back the FPS, speed and XR lines.
+      // FPS stays on the status panel. Speed and XR stay behind
+      // `hud.ui.data.hideStatusDebug = false`.
       const hideDebug = hud.ui?.data?.hideStatusDebug !== false;
-      const base = hideDebug
-        ? []
-        : [
-            { text: `FPS: ${fps}`, color: HUD_TEXT_DEFAULT_COLOR },
-            { text: `Speed: ${speed}`, color: HUD_TEXT_DEFAULT_COLOR },
-            { text: `XR: ${vr}`, color: HUD_TEXT_INFO_COLOR },
-          ];
+      const base = [{ text: `FPS: ${fps}`, color: HUD_TEXT_DEFAULT_COLOR }];
+      if (!hideDebug) {
+        base.push(
+          { text: `Speed: ${speed}`, color: HUD_TEXT_DEFAULT_COLOR },
+          { text: `XR: ${vr}`, color: HUD_TEXT_INFO_COLOR },
+        );
+      }
 
       const entries = base.concat(Array.isArray(extra) ? extra : [extra]);
       renderList(entries, "topElseEnd");

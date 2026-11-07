@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createHudRenderOrderRuntime } from "./hud-render-order-runtime.js";
+import { tickQualityCalibrations } from "./quality-calibration.js";
 
 /**
  * Create the HUD per-frame update and dirty-render orchestration runtime.
@@ -172,6 +173,7 @@ export function createHudFrameUpdateRuntime({
     }
 
     updateMetrics(dt);
+    tickQualityCalibrations(dt);
 
     // Update Debug panel content at a low rate (avoid per-frame allocations).
     updateDebugPanel(dt);

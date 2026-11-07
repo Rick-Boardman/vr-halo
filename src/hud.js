@@ -409,6 +409,7 @@ export function createHudSystem(
     reserveSystemHotbarSlots: _reserveSystemHotbarSlots,
     toggleHelp,
     toggleDebug: () => toggleWindow("debug"),
+    toggleSettings,
     markDirty,
   });
   syncHotbarWindowSize();
@@ -457,6 +458,10 @@ export function createHudSystem(
 
   function toggleHelp() {
     _windowVisibilityRuntime.toggleHelp();
+  }
+
+  function toggleSettings() {
+    _windowVisibilityRuntime.toggleSettings();
   }
 
   function toggleWindow(key) {
@@ -1234,6 +1239,7 @@ export function createHudSystem(
     exitVR,
     toggleWindow,
     toggleHelp,
+    toggleSettings,
     restoreAllHidden: () => _windowVisibilityRuntime.restoreAllHidden(),
   });
 
@@ -1379,6 +1385,7 @@ export function createHudSystem(
     setHelpExtraLines: (lines) => _helpContentRuntime.setHelpExtraLines(lines),
     setHelpOverrideLines: (lines) => _helpContentRuntime.setHelpOverrideLines(lines),
     toggleHelp,
+    toggleSettings,
     bringToFront,
     toggleWindow,
     setWindowCollapsed: (key, collapsed) => _windowVisibilityRuntime.setWindowCollapsed(key, collapsed),

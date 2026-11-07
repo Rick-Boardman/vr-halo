@@ -7,6 +7,7 @@ import { createSceneNavigation } from "./navigation/scene-navigation.js";
 import { createXrControllers } from "./xr-controllers.js";
 import { createHudSystem } from "./hud.js?v=hud-fix-1";
 import { createRemoteLogAdapter } from "./remote-log-adapter.js";
+import { createQualityCalibration } from "./quality-calibration.js";
 
 /**
  * Purpose: Create the canonical scene renderer, rig, controllers, HUD, navigation, and remote logging wiring used by shared app harnesses.
@@ -24,7 +25,8 @@ import { createRemoteLogAdapter } from "./remote-log-adapter.js";
  * @param {object} [options.navigationOptions] Options forwarded into createSceneNavigation.
  * @param {() => boolean} [options.isTyping] Optional predicate used to suppress navigation input while typing.
  * @param {string | null} [options.remoteLogUrl] Optional explicit remote-log collector URL used by the bootstrap diagnostics adapter.
- * @returns {{ renderer: unknown, scene: unknown, camera: unknown, rig: { player: unknown, playerYaw: unknown, playerPitch: unknown, playerRoll: unknown, head: unknown }, look: unknown, controllers: unknown, hudSystem: unknown, navigation: unknown, remoteLogger: unknown, worldRaycastTargets: Array<unknown> | null, setWorldControlsEnabled: (enabled: boolean) => void, getWorldControlsEnabled: () => boolean }} Canonical bootstrap result containing the live renderer/scene stack, rig/look API, controllers, HUD, navigation, logging adapter, and world-control toggles.
+ * @param {false | { onTier?: (info: object) => void, onAudio?: (info: { volume: number, muted: boolean }) => void, cap?: number, devicePixelRatio?: number, storage?: object | null, targetFps?: number, badFrameMs?: number, sampleSeconds?: number, warmupSeconds?: number }} [options.qualityCalibration] Graphics calibration. Pass false to keep the renderer's pixel ratio. Otherwise the ladder starts low and stops at the pixel ratio set by configureRenderer.
+ * @returns {{ renderer: unknown, scene: unknown, camera: unknown, rig: { player: unknown, playerYaw: unknown, playerPitch: unknown, playerRoll: unknown, head: unknown }, look: unknown, controllers: unknown, hudSystem: unknown, navigation: unknown, remoteLogger: unknown, worldRaycastTargets: Array<unknown> | null, setWorldControlsEnabled: (enabled: boolean) => void, getWorldControlsEnabled: () => boolean, quality: object | null }} Canonical bootstrap result containing the live renderer/scene stack, rig/look API, controllers, HUD, navigation, logging adapter, world-control toggles, and the graphics calibration controller.
  * Side effects: may construct a renderer and scene, mutates renderer XR state and sizing, may add rig objects to the scene, may build world content, creates HUD/navigation/controller systems, and may install remote logging.
  */
 export function createSceneHudBootstrap({
@@ -56,6 +58,10 @@ export function createSceneHudBootstrap({
 
   // Optional explicit remote log collector URL for diagnostics.
   remoteLogUrl: providedRemoteLogUrl,
+
+  // false keeps the pixel ratio from configureRenderer. An object forwards
+  // onTier / onAudio and optional calibration knobs.
+  qualityCalibration,
 } = {}) {
   if (!THREE) throw new Error("createSceneHudBootstrap: THREE is required");
 
@@ -96,6 +102,8 @@ export function createSceneHudBootstrap({
   if (typeof configureRenderer === "function") {
     configureRenderer(renderer);
   }
+
+  const quality = startQualityCalibration(renderer, qualityCalibration);
 
   const scene = providedScene || new THREE.Scene();
   if (typeof configureScene === "function") {
@@ -271,6 +279,8 @@ export function createSceneHudBootstrap({
     ...(navigationOptions || {}),
   });
 
+  quality?.attach(hudSystem);
+
   return {
     renderer,
     scene,
@@ -283,5 +293,43 @@ export function createSceneHudBootstrap({
     worldRaycastTargets,
     setWorldControlsEnabled,
     getWorldControlsEnabled: () => worldControlsEnabled,
+    quality,
   };
+}
+
+function browserStorage() {
+  try {
+    const store = globalThis.localStorage;
+    if (store && typeof store.getItem === "function" && typeof store.setItem === "function") {
+      return store;
+    }
+  } catch {
+    // private mode or a non-browser host
+  }
+  return null;
+}
+
+function browserPixelRatio() {
+  const ratio = Number(globalThis.devicePixelRatio);
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+}
+
+function startQualityCalibration(renderer, qualityCalibration) {
+  if (qualityCalibration === false) return null;
+  const extra = qualityCalibration && typeof qualityCalibration === "object" ? qualityCalibration : {};
+  const currentRatio = Number(renderer?.getPixelRatio?.());
+  const quality = createQualityCalibration({
+    renderer,
+    devicePixelRatio: extra.devicePixelRatio ?? browserPixelRatio(),
+    cap: extra.cap ?? (Number.isFinite(currentRatio) && currentRatio > 0 ? currentRatio : undefined),
+    storage: Object.prototype.hasOwnProperty.call(extra, "storage") ? extra.storage : browserStorage(),
+    targetFps: extra.targetFps,
+    badFrameMs: extra.badFrameMs,
+    sampleSeconds: extra.sampleSeconds,
+    warmupSeconds: extra.warmupSeconds,
+    onTier: extra.onTier,
+    onAudio: extra.onAudio,
+  });
+  quality.start();
+  return quality;
 }

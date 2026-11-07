@@ -34,6 +34,15 @@ function initializeHelpWindow(win) {
   win.y = HUD_WINDOW_HIDDEN_Y_PX;
 }
 
+function initializeSettingsWindow(win) {
+  if (!win) return;
+  win._settingsHiddenX = win.x;
+  win._settingsHiddenY = win.y;
+  win._settingsHiddenCollapsed = false;
+  win.x = HUD_WINDOW_VR_RIGHT_X_PX;
+  win.y = HUD_WINDOW_HIDDEN_Y_PX;
+}
+
 function createWindowInstance(windowKey, definition, WindowClass = HudWindowBase) {
   if (!definition) return null;
   const { initializeWindow, ...windowOptions } = definition;
@@ -355,6 +364,24 @@ export function createDefaultWindowPresetBlueprint({ windowClampMode, windowClam
         maxLines: 240,
         initializeWindow: initializeHelpWindow,
       },
+      settings: {
+        title: "GRAPHICS",
+        x: 260,
+        y: 120,
+        w: 380,
+        h: 340,
+        minW: 280,
+        minH: 220,
+        minimizable: true,
+        closeable: true,
+        resizable: true,
+        draggable: true,
+        scrollable: true,
+        scrollTop: 0,
+        scrollMode: "top",
+        maxLines: 40,
+        initializeWindow: initializeSettingsWindow,
+      },
     },
     order: [
       "xr",
@@ -369,6 +396,7 @@ export function createDefaultWindowPresetBlueprint({ windowClampMode, windowClam
       "hotbar",
       "debug",
       "help",
+      "settings",
     ],
     focus: "chat",
     defaults: { ..._defaultDefaults },
@@ -456,8 +484,26 @@ export function createMinimalWindowPresetBlueprint({ windowClampMode, windowClam
         maxLines: 240,
         initializeWindow: initializeHelpWindow,
       },
+      settings: {
+        title: "GRAPHICS",
+        x: 40,
+        y: 90,
+        w: 380,
+        h: 340,
+        minW: 280,
+        minH: 220,
+        minimizable: true,
+        closeable: true,
+        resizable: true,
+        draggable: true,
+        scrollable: true,
+        scrollTop: 0,
+        scrollMode: "top",
+        maxLines: 40,
+        initializeWindow: initializeSettingsWindow,
+      },
     },
-    order: ["xr", "status", "hotbar", "debug", "help"],
+    order: ["xr", "status", "hotbar", "debug", "help", "settings"],
     focus: "hotbar",
     defaults: { ..._defaultDefaults },
   };

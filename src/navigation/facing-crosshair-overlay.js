@@ -5,8 +5,8 @@ const MIN_CROSSHAIR_THICKNESS = 0.0015;
 const CROSSHAIR_THICKNESS_RATIO = 0.18;
 const OUTLINE_SCALE = 1.18;
 const CORE_SCALE = 1.0;
-const OUTLINE_RENDER_ORDER = 9998;
-const CORE_RENDER_ORDER = 9999;
+const OUTLINE_RENDER_ORDER = 20000;
+const CORE_RENDER_ORDER = 20001;
 const CROSSHAIR_OUTLINE_COLOR = 0xffffff;
 const CROSSHAIR_CORE_COLOR = 0x000000;
 const MIN_CROSSHAIR_DISTANCE = 0.35;
@@ -22,6 +22,7 @@ const MAX_CROSSHAIR_SCALE = 10000;
  * @param {any} options.THREE Three.js namespace that must expose Scene, Group, Vector3, Quaternion, MeshBasicMaterial, PlaneGeometry, and Mesh.
  * @param {{ xr?: { isPresenting?: boolean, getCamera?: (camera: unknown) => any } }} options.renderer Renderer whose XR manager distinguishes desktop vs XR crosshair updates.
  * @param {any} options.camera Camera used for overlay rendering and world-space placement fallback.
+ * @param {any} [options.scene] Scene that draws the mark in the main pass. When set, render() does not clear depth or render again.
  * @param {any} options.player Player or rig root used as the desktop crosshair origin when available.
  * @param {() => number} options.getYaw Current desktop yaw accessor in radians.
  * @param {() => number} options.getPitch Current desktop pitch accessor in radians.
@@ -37,6 +38,7 @@ export function createFacingCrosshairOverlay({
   THREE,
   renderer,
   camera,
+  scene = null,
   player,
   getYaw,
   getPitch,
@@ -50,6 +52,7 @@ export function createFacingCrosshairOverlay({
     THREE,
     renderer,
     camera,
+    scene,
     player,
     getYaw,
     getPitch,
@@ -66,6 +69,7 @@ class FacingCrosshairOverlay {
     THREE,
     renderer,
     camera,
+    scene = null,
     player,
     getYaw,
     getPitch,
@@ -97,6 +101,7 @@ class FacingCrosshairOverlay {
     this._THREE = THREE;
     this._renderer = renderer;
     this._camera = camera;
+    this._scene = scene;
     this._player = player;
     this._getYaw = getYaw;
     this._getPitch = getPitch;
@@ -135,6 +140,8 @@ class FacingCrosshairOverlay {
       this.hide();
       return;
     }
+    // The mark is already in the main scene, drawn with the transparent pass.
+    if (this._scene) return;
     if (!this._overlayScene || !this._facingCrosshair || !this._facingCrosshair.visible) {
       return;
     }
@@ -158,9 +165,11 @@ class FacingCrosshairOverlay {
   }
 
   dispose() {
-    if (this._overlayScene && this._facingCrosshair) {
-      this._overlayScene.remove(this._facingCrosshair);
-      this._disposeObject3D(this._facingCrosshair);
+    const group = this._facingCrosshair;
+    if (group) {
+      this._overlayScene?.remove(group);
+      this._scene?.remove(group);
+      this._disposeObject3D(group);
     }
 
     this._facingCrosshair = null;
@@ -173,7 +182,7 @@ class FacingCrosshairOverlay {
       return;
     }
 
-    if (!this._overlayScene) {
+    if (!this._scene && !this._overlayScene) {
       this._overlayScene = new this._THREE.Scene();
     }
 
@@ -201,14 +210,16 @@ class FacingCrosshairOverlay {
     outlineMeshes.concat(coreMeshes).forEach((mesh) => group.add(mesh));
 
     group.visible = true;
-    this._overlayScene.add(group);
+    if (this._scene) this._scene.add(group);
+    else this._overlayScene.add(group);
     this._facingCrosshair = group;
   }
 
   _createCrosshairMeshes({ size, thickness, scale, color, renderOrder }) {
     const material = new this._THREE.MeshBasicMaterial({
       color,
-      transparent: false,
+      transparent: true,
+      opacity: 1,
       depthTest: false,
       depthWrite: false,
     });
