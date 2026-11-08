@@ -33,8 +33,8 @@
  * Parameters: see createHudChatPanel below.
  * Return value: a handle with `open`, `close`, `toggle`, `isOpen`, `send`,
  * `setTransport`, `refresh`, `isTyping` and `dispose`.
- * Side effects: creates two HUD windows (transcript and composer), subscribes
- * to the transport, and creates a Troika-backed text editor for the composer.
+ * Side effects: creates one HUD window, subscribes to the transport, and docks
+ * a Troika-backed text field in that window's footer.
  */
 
 import { createHudTextEditor } from "../hud-text-editor.js";
@@ -68,14 +68,14 @@ function clockText(value) {
  * @param {object} options.hudSystem HUD system from createSceneHudBootstrap / createHudSystem.
  * @param {object} options.renderer The WebGL renderer (the composer's editor needs it for input).
  * @param {object} options.transport See the transport contract above.
- * @param {string} [options.key="chat"] Window key prefix; the composer uses `${key}-composer`.
- * @param {string} [options.title="CHAT"] Transcript window title.
- * @param {number} [options.x=16] Transcript window x, in HUD layout pixels.
- * @param {number} [options.y=16] Transcript window y.
- * @param {number} [options.w=460] Window width for both windows.
- * @param {number} [options.h=280] Transcript height (the composer adds its own below).
- * @param {number} [options.composerHeight=96] Composer window height.
- * @param {number} [options.gap=8] Vertical gap between transcript and composer.
+ * @param {string} [options.key="chat"] Window key.
+ * @param {string} [options.title="CHAT"] Window title.
+ * @param {number} [options.x=16] Window x, in HUD layout pixels.
+ * @param {number} [options.y=16] Window y.
+ * @param {number} [options.w=460] Window width.
+ * @param {number} [options.h=280] Transcript height. The input strip is added below this.
+ * @param {number} [options.composerHeight=96] Extra height reserved so the input fits under the transcript.
+ * @param {number} [options.gap=8] Unused. Kept so older callers still construct.
  * @param {number} [options.maxLines=200] How many transcript lines to keep on screen.
  * @param {object} [options.colors] Overrides for {author, body, meta, system, trouble}.
  * @param {(userId: string) => string} [options.nameFor] Author id -> display name.
@@ -93,7 +93,6 @@ export function createHudChatPanel({
   w = 460,
   h = 280,
   composerHeight = 96,
-  gap = 8,
   maxLines = 200,
   colors = {},
   nameFor = null,
@@ -105,8 +104,8 @@ export function createHudChatPanel({
   if (RESERVED_WINDOW_KEYS.has(transcriptKey)) {
     throw new Error(`createHudChatPanel: "${transcriptKey}" is a reserved HUD window key`);
   }
-  const composerKey = `${transcriptKey}-composer`;
   const palette = { ...DEFAULT_COLORS, ...(colors || {}) };
+  const panelHeight = Math.max(64, Math.floor(Number(h) || 0) + Math.max(0, Math.floor(Number(composerHeight) || 0)));
 
   let live = transport;
   let unsubscribe = null;
@@ -120,38 +119,31 @@ export function createHudChatPanel({
     x,
     y,
     w,
-    h,
+    h: panelHeight,
     scrollable: true,
     // A transcript reads bottom-up: the newest line is the one somebody is
-    // waiting for, so it stays in view without anybody scrolling.
+    // waiting for, so it stays in view without anybody scrolling. The input
+    // is the window footer, so it stays put while the lines scroll.
     scrollMode: "bottom",
     maxLines,
   });
 
-  hudSystem.createWindow(composerKey, {
-    title: "SAY",
-    x,
-    y: y + h + gap,
-    w,
-    h: composerHeight,
-    minH: 64,
-    resizable: true,
-  });
-
-  // The composer is Halo's own text editor, which is what gives a VR user a
-  // caret and a keyboard at all. Enter submits; the editor keeps focus so a
-  // conversation does not need a click between lines.
+  // One field, docked in this window. Enter submits. The field clears only
+  // after the send succeeds, and only if nothing newer has been typed.
   const editor = createHudTextEditor({
     renderer,
     hudSystem,
-    windowKey: composerKey,
+    windowKey: transcriptKey,
+    surface: "footer",
+    placeholder: "Say something",
     initialText: "",
     submitOnEnter: true,
-    wrapLines: true,
-    onSubmit: async (text) => {
-      const sent = await send(text);
-      // Keep failed sends and any draft edited while the send was in flight.
-      if (sent && !disposed && editor.getText() === text) editor.setText("");
+    onDirty: () => paint(),
+    onSubmit: (text) => {
+      const sent = String(text ?? "");
+      void send(sent).then((ok) => {
+        if (ok && !disposed && editor.getText() === sent) editor.setText("");
+      });
     },
   });
 
@@ -169,7 +161,7 @@ export function createHudChatPanel({
     return parts.join(" · ");
   }
 
-  function render() {
+  function paint() {
     if (disposed) return;
     const entries = [];
     const status = statusLine();
@@ -193,7 +185,10 @@ export function createHudChatPanel({
     }
     if (trouble) entries.push({ text: trouble, color: palette.trouble });
 
-    hudSystem.setWindowLines(transcriptKey, entries, { scrollMode: "bottom" });
+    hudSystem.setWindowLines(transcriptKey, entries, {
+      scrollMode: "bottom",
+      footerEntries: editor.footerEntries?.() ?? [],
+    });
   }
 
   function attach(next) {
@@ -209,10 +204,10 @@ export function createHudChatPanel({
           watching: incoming?.watching ?? 0,
           hasMore: Boolean(incoming?.hasMore),
         };
-        render();
+        paint();
       });
     }
-    render();
+    paint();
   }
 
   async function send(text) {
@@ -220,7 +215,7 @@ export function createHudChatPanel({
     if (!body) return false;
     if (!live || typeof live.send !== "function") {
       trouble = "Nothing is connected to send through.";
-      render();
+      paint();
       return false;
     }
     trouble = "";
@@ -232,7 +227,7 @@ export function createHudChatPanel({
       // somebody typed on a failure — the editor still holds it, because
       // losing a sentence is worse than showing a refusal.
       trouble = String(error?.message ?? error ?? "That could not be sent.");
-      render();
+      paint();
       return false;
     }
   }
@@ -240,17 +235,14 @@ export function createHudChatPanel({
   function open() {
     opened = true;
     hudSystem.setWindowHidden(transcriptKey, false);
-    hudSystem.setWindowHidden(composerKey, false);
     hudSystem.bringToFront(transcriptKey);
-    hudSystem.bringToFront(composerKey);
-    render();
+    paint();
   }
 
   function close() {
     opened = false;
-    editor.blur();
+    editor?.blur?.();
     hudSystem.setWindowHidden(transcriptKey, true);
-    hudSystem.setWindowHidden(composerKey, true);
   }
 
   attach(transport);
@@ -265,17 +257,15 @@ export function createHudChatPanel({
     isTyping: () => opened && editor.isTyping(),
     send,
     setTransport: (next) => attach(next),
-    refresh: render,
-    /** The transcript and composer window keys, for skinning (see
-     *  HUD-WINDOW-SKINNING.md) or for an app that wants to move them. */
-    windowKeys: () => ({ transcript: transcriptKey, composer: composerKey }),
+    refresh: paint,
+    /** Transcript and composer are the same window. The input is its footer. */
+    windowKeys: () => ({ transcript: transcriptKey, composer: transcriptKey }),
     dispose: () => {
       if (disposed) return;
       disposed = true;
       if (typeof unsubscribe === "function") unsubscribe();
       unsubscribe = null;
       editor?.dispose?.();
-      hudSystem.destroyWindow?.(composerKey);
       hudSystem.destroyWindow?.(transcriptKey);
     },
   };

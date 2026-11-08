@@ -22,13 +22,14 @@ transport, renders it through Halo's frame loop, and exposes the panel for
 inspection. It sends nothing to a server. Replace the fake transport with an
 application-owned transport when integrating a real service.
 
-TABLE ONE and SAY share the left column; SAY sits directly below the transcript.
-HELP opens on the right with keyboard and mouse navigation. Narrow viewports stack
-the panels. Click SAY to type, press Enter to send, and Escape or click away to
-return to scene navigation. Text-editing keys are consumed by the focused editor.
-Clicking and dragging the world releases SAY and looks around on that first drag.
-A successful send clears SAY and keeps it focused for the next message. Failed
-sends keep the draft, and a delayed send never clears text edited while waiting.
+TABLE ONE is one window. The line you type is a field in its footer, not a
+second window. HELP opens on the right with keyboard and mouse navigation.
+Narrow viewports stack the panels. Click the footer to type, press Enter to
+send, and Escape or click away to return to scene navigation. Text-editing
+keys are consumed by the focused editor. Clicking and dragging the world
+releases the field and looks around on that first drag. A successful send
+clears the field and keeps it focused for the next message. Failed sends keep
+the draft, and a delayed send never clears text edited while waiting.
 
 ## Install a versioned package in another application
 

@@ -100,7 +100,7 @@ export { createTitleBarClass } from "./title-bar.js";
  * Purpose: Re-export the HUD chat panel — a scrolling transcript plus a Troika
  * composer, bound to an app-supplied transport rather than to any chat service.
  * Parameters and return values: forwarded from createHudChatPanel in ./chat-panel.js.
- * Side effects: none in this barrel; the factory creates two HUD windows and a
- * text editor when a caller invokes it.
+ * Side effects: none in this barrel; the factory creates one HUD window and
+ * docks a text field in its footer when a caller invokes it.
  */
 export { createHudChatPanel } from "./chat-panel.js";

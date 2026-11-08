@@ -97,6 +97,8 @@ const HUD_TEXT_EDITOR_SELECTION_OPACITY_BLURRED_DEFAULT = 0.45;
  * @param {boolean} [options.showLineNumbers] Override for line-number gutter visibility. Defaults to true in structured mode and false otherwise.
  * @param {boolean} [options.submitOnEnter=false] When true, plain Enter submits instead of inserting a newline.
  * @param {boolean} [options.submitOnMetaEnter=false] When true, Ctrl/Cmd+Enter submits instead of inserting a newline.
+ * @param {"window"|"footer"} [options.surface="window"] Where the editable text is drawn. "footer" docks a single-line field in the window footer and leaves the window's own lines alone.
+ * @param {string} [options.placeholder=""] Muted text shown in a footer field while it is empty.
  * @returns {{focus: () => void, blur: () => void, isTyping: () => boolean, isSystemKeyboardSupported: () => boolean, setText: (text: string) => void, getText: () => string, pasteFromClipboard: () => Promise<boolean>, dispose: () => void}} Editor controller exposing focus/blur, text getters and setters, immersive system-keyboard detection, clipboard paste, typing state, and disposal hooks.
  * Side effects: validates required renderer and HUD handles, mutates HUD window text plus caret state, registers window keyboard and paste listeners and renderer-canvas pointer and mouse listeners, creates a temporary invisible DOM textarea for supported immersive system keyboards, starts and clears caret timers, reads clipboard contents when available, and invokes `onDirty` after editor state changes.
  */
@@ -120,11 +122,15 @@ export function createHudTextEditor({
   showLineNumbers,
   submitOnEnter = false,
   submitOnMetaEnter = false,
+  surface = "window",
+  placeholder = "",
 } = {}) {
   if (!renderer) throw new Error("createHudTextEditor: renderer is required");
   if (!hudSystem) throw new Error("createHudTextEditor: hudSystem is required");
   const key = String(windowKey ?? "").trim();
   if (!key) throw new Error("createHudTextEditor: windowKey is required");
+  const docked = surface === "footer";
+  const placeholderText = String(placeholder ?? "").trim();
 
   let focused = false;
   let caretVisible = true;
@@ -193,6 +199,13 @@ export function createHudTextEditor({
   function hasSelection() {
     if (selAx == null || selAy == null) return false;
     return !samePos(selAx, selAy, cx, cy);
+  }
+
+  function releaseCollapsedAnchor() {
+    // A click plants an anchor on the caret so a drag can grow a selection.
+    // Leaving it there makes the first typed character the selection, and the
+    // second character replaces it.
+    if (!hasSelection()) clearSelection();
   }
 
   function ensureSelectionAnchor() {
@@ -327,7 +340,45 @@ export function createHudTextEditor({
     hudSystem.setWindowScrollTop(key, nextTop);
   }
 
+  function draftText() {
+    return joinLines(lines);
+  }
+
+  function dockedFooterEntries() {
+    if (!docked) return [];
+    const draft = draftText();
+    const showingPlaceholder = !draft;
+    return [{
+      actionButtonText: showingPlaceholder ? (placeholderText || " ") : draft,
+      actionButtonSourceText: draft,
+      actionButtonOnClick: () => focus({ scrollCursorIntoView: false }),
+      actionButtonWidthPx: 10000,
+      actionButtonTextInsetPx: 10,
+      actionButtonTextColor: showingPlaceholder ? HUD_TEXT_MUTED_COLOR : HUD_TEXT_DEFAULT_COLOR,
+      actionButtonBgColor: 0x12161c,
+      actionButtonBgOpacity: 0.96,
+    }];
+  }
+
+  function renderFooterCaret() {
+    hudSystem.setWindowTextCaret(key, {
+      visible: !!focused && !!caretVisible && !hasSelection(),
+      target: "footer",
+      row: 0,
+      col: cx,
+      wPx: Math.max(1, Math.floor(getHudGlyphDotSizePx(renderer))),
+      color: HUD_TEXT_BRIGHT_COLOR,
+    });
+    // Selection highlighting is drawn on the window's transcript lines.
+    // A footer field must not paint that highlight over the chat.
+    hudSystem.setWindowTextSelection(key, { visible: false, target: "footer" });
+  }
+
   function render() {
+    if (docked) {
+      renderFooterCaret();
+      return;
+    }
     // Render all text lines as HUD window content.
     const out = [];
 
@@ -439,6 +490,7 @@ export function createHudTextEditor({
   }
 
   function insertChar(ch) {
+    releaseCollapsedAnchor();
     deleteSelectionIfAny();
     const line = lines[cy] ?? "";
     lines[cy] = line.slice(0, cx) + ch + line.slice(cx);
@@ -449,8 +501,13 @@ export function createHudTextEditor({
     const s = String(text ?? "");
     if (!s) return false;
 
+    releaseCollapsedAnchor();
     deleteSelectionIfAny();
-    const normalized = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    // A docked field is one line. A pasted break becomes a space so the caret
+    // stays in that line instead of opening a second row the footer cannot show.
+    const normalized = docked
+      ? s.replace(/\r\n/g, " ").replace(/[\r\n]/g, " ")
+      : s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const parts = normalized.split("\n");
     if (parts.length === 1) {
       const line = lines[cy] ?? "";
@@ -473,6 +530,7 @@ export function createHudTextEditor({
   }
 
   function backspace() {
+    releaseCollapsedAnchor();
     if (deleteSelectionIfAny()) return;
     const line = lines[cy] ?? "";
     if (cx > 0) {
@@ -490,6 +548,7 @@ export function createHudTextEditor({
   }
 
   function del() {
+    releaseCollapsedAnchor();
     if (deleteSelectionIfAny()) return;
     const line = lines[cy] ?? "";
     if (cx < line.length) {
@@ -504,6 +563,7 @@ export function createHudTextEditor({
   }
 
   function newline() {
+    releaseCollapsedAnchor();
     deleteSelectionIfAny();
     const line = lines[cy] ?? "";
     const left = line.slice(0, cx);
@@ -727,11 +787,13 @@ export function createHudTextEditor({
         || (submitOnMetaEnter && (e.ctrlKey || e.metaKey)));
     if (wantsSubmitOnEnter) {
       e.stopImmediatePropagation();
+      let replacement;
       try {
-        onSubmit?.(joinLines(lines));
+        replacement = onSubmit?.(joinLines(lines));
       } catch {
         // no-op
       }
+      if (typeof replacement === "string") setText(replacement);
       e.preventDefault();
       return;
     }
@@ -873,6 +935,41 @@ export function createHudTextEditor({
     return { x: nextX, y: nextY };
   }
 
+  function isPointInsideFooter(px, py) {
+    const hud = hudSystem?.hud;
+    const w = hud?.ui?.windows?.[key];
+    if (!w || w.collapsed) return false;
+    const footerReserve = Math.max(0, Number(w._footerReservedHeightPx) || 0);
+    if (footerReserve <= 0) return false;
+    if (px < w.x || px > w.x + w.w) return false;
+    const bottom = w.y + w.h;
+    return py >= bottom - footerReserve && py <= bottom;
+  }
+
+  function resolveFooterCursor(p) {
+    const draft = lines[0] ?? "";
+    const meta = hudSystem?.hud?.objects?.windows?.[key]?._footerActionMeta?.[0];
+    if (!meta || !Number.isFinite(meta.textX)) return { x: draft.length, y: 0 };
+    const dot = Number.isFinite(meta.dot) ? Number(meta.dot) : getHudGlyphDotSizePx(renderer);
+    const localX = p.x - meta.textX;
+    let col = clamp(Math.round(localX / Math.max(1, 6 * dot)), 0, draft.length);
+    try {
+      const tri = meta.labelObject?._textMesh?.textRenderInfo;
+      const rendered = typeof tri?.parameters?.text === "string" ? tri.parameters.text : "";
+      if (draft && rendered === draft && tri && typeof _getCaretAtPoint === "function") {
+        const topNudge = (7 * dot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
+        const localY = -(p.y - meta.textY) - topNudge;
+        const caret = _getCaretAtPoint(tri, localX, localY);
+        if (caret && Number.isFinite(caret.charIndex)) {
+          col = clamp(Math.floor(caret.charIndex), 0, draft.length);
+        }
+      }
+    } catch {
+      // no-op
+    }
+    return { x: col, y: 0 };
+  }
+
   function isPointInsideEditorContent(px, py) {
     const hud = hudSystem?.hud;
     const w = hud?.ui?.windows?.[key];
@@ -925,6 +1022,22 @@ export function createHudTextEditor({
     if (Number.isFinite(e?.button) && e.button !== 0) return;
     const p = clientToHudPoint(e.clientX, e.clientY);
     if (!p) return;
+    if (docked) {
+      if (isPointInsideFooter(p.x, p.y)) {
+        focus({ scrollCursorIntoView: false });
+        const nextPos = resolveFooterCursor(p);
+        cx = nextPos.x;
+        cy = 0;
+        clearSelection();
+        normalizeCursor();
+        shouldScrollCursorIntoView = false;
+        render();
+        notifyDirty();
+        return;
+      }
+      if (focused) blur();
+      return;
+    }
     if (isPointInsideEditorContent(p.x, p.y)) {
       focus({ scrollCursorIntoView: false });
       try {
@@ -975,6 +1088,7 @@ export function createHudTextEditor({
 
   function onMouseUp() {
     mouseSelectionActive = false;
+    if (!hasSelection()) clearSelection();
   }
 
   renderer.domElement.addEventListener("pointerdown", onPointerDown, { capture: true, passive: true });
@@ -1015,6 +1129,7 @@ export function createHudTextEditor({
     isTyping,
     setText,
     getText,
+    footerEntries: dockedFooterEntries,
     pasteFromClipboard,
     isSystemKeyboardSupported: systemKeyboard.isSupported,
     dispose,

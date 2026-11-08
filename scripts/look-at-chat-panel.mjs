@@ -105,7 +105,7 @@ try {
     const keys = panel.windowKeys();
     return { keys, open: panel.isOpen() };
   });
-  step('both windows exist and the panel is open', Boolean(drawn.keys.transcript && drawn.keys.composer), `${drawn.keys.transcript}, ${drawn.keys.composer}`);
+  step('one window holds the transcript and the input', Boolean(drawn.keys.transcript) && drawn.keys.composer === drawn.keys.transcript && drawn.open, drawn.keys.transcript);
 
   const painted = await page.evaluate(() => {
     const canvas = document.querySelector('canvas');
@@ -118,24 +118,27 @@ try {
     const { hudSystem } = globalThis.__haloChatExample;
     const keys = globalThis.__haloChatPanel.windowKeys();
     const windows = hudSystem.hud.ui.windows;
-    const transcript = windows[keys.transcript], composer = windows[keys.composer], help = windows.help;
+    const chat = windows[keys.transcript], help = windows.help;
+    const footer = chat._footerEntries?.[0];
     return {
-      adjacent: composer.x === transcript.x && composer.y === transcript.y + transcript.h + 12,
-      separate: help.x >= transcript.x + transcript.w,
+      oneWindow: keys.composer === keys.transcript,
+      footer: Number(chat._footerReservedHeightPx) > 0 && typeof footer?.actionButtonText === 'string',
+      separate: help.x >= chat.x + chat.w,
       helpVisible: help.y >= 0 && !help.collapsed,
     };
   });
-  step('SAY sits directly below TABLE ONE', layout.adjacent);
+  step('the input is the footer of the one chat window', layout.oneWindow && layout.footer);
   step('HELP is open in a separate column', layout.separate && layout.helpVisible);
 
   async function clickComposer() {
     const point = await page.evaluate(() => {
       const hud = globalThis.__haloChatExample.hudSystem.hud;
-      const composer = hud.ui.windows[globalThis.__haloChatPanel.windowKeys().composer];
+      const chat = hud.ui.windows[globalThis.__haloChatPanel.windowKeys().transcript];
       const rect = document.querySelector('canvas').getBoundingClientRect();
+      const footerH = Math.max(24, Number(chat._footerReservedHeightPx) || 40);
       return {
-        x: rect.left + (composer.x + 40) / hud.layoutW * rect.width,
-        y: rect.top + (composer.y + 50) / hud.layoutH * rect.height,
+        x: rect.left + (chat.x + 40) / hud.layoutW * rect.width,
+        y: rect.top + (chat.y + chat.h - footerH / 2) / hud.layoutH * rect.height,
       };
     });
     await page.mouse.click(point.x, point.y);
@@ -154,9 +157,10 @@ try {
     const editorState = await page.evaluate(() => {
       const panel = globalThis.__haloChatPanel;
       const hud = globalThis.__haloChatExample.hudSystem.hud;
-      const key = panel.windowKeys().composer;
+      const key = panel.windowKeys().transcript;
+      const footer = hud.ui.windows[key]._footerEntries?.[0];
       return {
-        text: hud.ui.data[key + 'Lines'].map(entry => entry.sourceText ?? entry.text).join('\n'),
+        text: footer?.actionButtonSourceText ?? '',
         selected: !!hud.ui.windows[key]._textSelection?.visible,
         caret: !!hud.ui.windows[key]._textCaret?.visible,
         focused: panel.isTyping(),
@@ -200,7 +204,8 @@ try {
   const draftText = () => page.evaluate(() => {
     const panel = globalThis.__haloChatPanel;
     const hud = globalThis.__haloChatExample.hudSystem.hud;
-    return hud.ui.data[panel.windowKeys().composer + 'Lines'].map(entry => entry.sourceText ?? entry.text).join('\n');
+    const footer = hud.ui.windows[panel.windowKeys().transcript]._footerEntries?.[0];
+    return footer?.actionButtonSourceText ?? '';
   });
   step('a successful send clears SAY and keeps focus', await draftText() === '' && await page.evaluate(() => globalThis.__haloChatPanel.isTyping()));
 
@@ -292,9 +297,9 @@ try {
   const mobileLayout = await page.evaluate(() => {
     const hud = globalThis.__haloChatExample.hudSystem.hud;
     const keys = globalThis.__haloChatPanel.windowKeys();
-    const a = hud.ui.windows[keys.transcript], b = hud.ui.windows[keys.composer], help = hud.ui.windows.help;
-    return b.y >= a.y + a.h && help.y >= b.y + b.h
-      && [a,b,help].every(w => w.x >= 0 && w.x + w.w <= hud.layoutW && w.y + w.h <= hud.layoutH);
+    const chat = hud.ui.windows[keys.transcript], help = hud.ui.windows.help;
+    return keys.composer === keys.transcript && help.y >= chat.y + chat.h
+      && [chat, help].every(w => w.x >= 0 && w.x + w.w <= hud.layoutW && w.y + w.h <= hud.layoutH);
   });
   step('a phone-sized viewport stacks the panels without overlap', mobileLayout);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -313,7 +318,7 @@ try {
 
   await page.evaluate(() => globalThis.__haloChatPanel.close());
   await page.waitForTimeout(400);
-  step('the panel closes on request', (await page.evaluate(() => globalThis.__haloChatPanel.isOpen())) === false, 'both windows hidden');
+  step('the panel closes on request', (await page.evaluate(() => globalThis.__haloChatPanel.isOpen())) === false, 'window hidden');
 
   await page.evaluate(() => globalThis.__haloChatPanel.open());
   await page.waitForTimeout(400);

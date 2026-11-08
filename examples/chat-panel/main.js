@@ -89,7 +89,7 @@ hudSystem.ensureSharedWindow("help");
 hudSystem.toggleHelp();
 hudSystem.setHelpExtraLines([
   { text: "Z/C = roll" },
-  { text: "Click SAY to type; Enter sends." },
+  { text: "Click the bottom field to type; Enter sends." },
   { text: "Escape leaves text entry." },
 ]);
 hudSystem.setWindowHidden("debug", true);
@@ -107,19 +107,18 @@ function layoutDemoPanels() {
   const columns = width >= 960;
   const panelWidth = columns ? Math.min(460, (width - margin * 3) / 2) : width - margin * 2;
   const keys = panel.windowKeys();
-  const transcript = ui.windows[keys.transcript];
-  const composer = ui.windows[keys.composer];
-  Object.assign(transcript, { x: margin, y: margin, w: panelWidth, h: columns ? 260 : 180 });
-  Object.assign(composer, { x: margin, y: transcript.y + transcript.h + gap, w: panelWidth, h: 110 });
+  const chat = ui.windows[keys.transcript];
+  const chatH = columns ? 360 : 280;
+  Object.assign(chat, { x: margin, y: margin, w: panelWidth, h: chatH });
   const help = ui.windows.help;
-  const helpY = columns ? margin : composer.y + composer.h + gap;
+  const helpY = columns ? margin : chat.y + chat.h + gap;
   Object.assign(help, {
     x: columns ? width - panelWidth - margin : margin,
     y: helpY,
     w: panelWidth,
     h: Math.max(220, Math.min(520, height - helpY - 100)),
   });
-  hudSystem.bringToFront(keys.composer);
+  hudSystem.bringToFront(keys.transcript);
 }
 
 startAnimationLoop({

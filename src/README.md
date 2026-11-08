@@ -161,10 +161,10 @@ textures and window keys; Halo owns meshes, layout, and VR hit-testing.
 
 ### Chat panel
 
-`createHudChatPanel(...)` (from [`ui/index.js`](./ui/index.js)) is a transcript
-window plus a Troika composer, built on the window API above. It owns the
-drawing and NOT the service: an app hands in a transport and Halo shows
-whatever it says.
+`createHudChatPanel(...)` (from [`ui/index.js`](./ui/index.js)) is one transcript
+window with a single-line Troika field in its footer, built on the window API
+above. It owns the drawing and NOT the service: an app hands in a transport
+and Halo shows whatever it says.
 
 ```js
 import { createHudChatPanel } from "./ui/index.js";
