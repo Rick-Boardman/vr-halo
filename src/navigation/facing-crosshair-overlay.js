@@ -11,9 +11,6 @@ const CROSSHAIR_OUTLINE_COLOR = 0xffffff;
 const CROSSHAIR_CORE_COLOR = 0x000000;
 const MIN_CROSSHAIR_DISTANCE = 0.35;
 const DEFAULT_CROSSHAIR_DISTANCE = 3.0;
-const MIN_CAMERA_DISTANCE = 0.15;
-const MIN_CROSSHAIR_SCALE = 0.01;
-const MAX_CROSSHAIR_SCALE = 10000;
 
 /**
  * Create the shared facing-crosshair overlay used by walkabout navigation diagnostics.
@@ -23,10 +20,6 @@ const MAX_CROSSHAIR_SCALE = 10000;
  * @param {{ xr?: { isPresenting?: boolean, getCamera?: (camera: unknown) => any } }} options.renderer Renderer whose XR manager distinguishes desktop vs XR crosshair updates.
  * @param {any} options.camera Camera used for overlay rendering and world-space placement fallback.
  * @param {any} [options.scene] Scene that draws the mark in the main pass. When set, render() does not clear depth or render again.
- * @param {any} options.player Player or rig root used as the desktop crosshair origin when available.
- * @param {() => number} options.getYaw Current desktop yaw accessor in radians.
- * @param {() => number} options.getPitch Current desktop pitch accessor in radians.
- * @param {(out: unknown) => unknown} [options.getQuaternion] Optional quaternion accessor used to derive the current forward vector directly.
  * @param {(xrCamera: unknown, out: unknown) => unknown} [options.getVrCameraPivotWorldPos] Optional XR pivot helper that resolves the VR camera pivot in world space.
  * @param {() => boolean} [options.isEnabled] Optional predicate that controls crosshair visibility.
  * @param {number} [options.distance=3] World-space offset from the camera or player along the facing vector.
@@ -39,10 +32,6 @@ export function createFacingCrosshairOverlay({
   renderer,
   camera,
   scene = null,
-  player,
-  getYaw,
-  getPitch,
-  getQuaternion,
   getVrCameraPivotWorldPos,
   isEnabled,
   distance = DEFAULT_CROSSHAIR_DISTANCE,
@@ -53,10 +42,6 @@ export function createFacingCrosshairOverlay({
     renderer,
     camera,
     scene,
-    player,
-    getYaw,
-    getPitch,
-    getQuaternion,
     getVrCameraPivotWorldPos,
     isEnabled,
     distance,
@@ -70,10 +55,6 @@ class FacingCrosshairOverlay {
     renderer,
     camera,
     scene = null,
-    player,
-    getYaw,
-    getPitch,
-    getQuaternion,
     getVrCameraPivotWorldPos,
     isEnabled,
     distance,
@@ -88,24 +69,11 @@ class FacingCrosshairOverlay {
     if (!camera) {
       throw new Error("createFacingCrosshairOverlay: camera is required");
     }
-    if (!player) {
-      throw new Error("createFacingCrosshairOverlay: player is required");
-    }
-    if (typeof getYaw !== "function") {
-      throw new Error("createFacingCrosshairOverlay: getYaw is required");
-    }
-    if (typeof getPitch !== "function") {
-      throw new Error("createFacingCrosshairOverlay: getPitch is required");
-    }
 
     this._THREE = THREE;
     this._renderer = renderer;
     this._camera = camera;
     this._scene = scene;
-    this._player = player;
-    this._getYaw = getYaw;
-    this._getPitch = getPitch;
-    this._getQuaternion = typeof getQuaternion === "function" ? getQuaternion : null;
     this._getVrCameraPivotWorldPos =
       typeof getVrCameraPivotWorldPos === "function" ? getVrCameraPivotWorldPos : null;
     this._isEnabled = typeof isEnabled === "function" ? isEnabled : () => false;
@@ -122,7 +90,6 @@ class FacingCrosshairOverlay {
     this._crossPos = new THREE.Vector3();
     this._camPosW = new THREE.Vector3();
     this._forwardW = new THREE.Vector3();
-    this._crossCamDistW = new THREE.Vector3();
   }
 
   update() {
@@ -133,6 +100,12 @@ class FacingCrosshairOverlay {
 
     this._ensureCrosshair();
     this._updateCrosshair();
+  }
+
+  /** Places the mark from the camera as it is now: the frame loop calls this just before drawing on desktop. */
+  sync() {
+    if (this._renderer?.xr?.isPresenting) return;
+    this.update();
   }
 
   render() {
@@ -291,57 +264,17 @@ class FacingCrosshairOverlay {
   }
 
   _updateDesktopCrosshair(distance) {
-    if (this._getQuaternion) {
-      // Desktop forward = q * (0, 0, -1); use the current look quaternion when
-      // the caller can provide it so the overlay matches the rig's exact facing.
-      this._getQuaternion(this._tmpQuat);
-      this._forwardW.set(0, 0, -1).applyQuaternion(this._tmpQuat).normalize();
-    } else {
-      const yaw = this._getYaw();
-      const pitch = this._getPitch();
-      const cosPitch = Math.cos(pitch);
-      // dir = (-sin(yaw)*cos(pitch), sin(pitch), -cos(yaw)*cos(pitch)).
-      // The desktop walkabout convention is Y-up with yaw=0 facing -Z, so yaw
-      // rotates around the vertical axis and pitch tilts the forward vector.
-      this._forwardW
-        .set(-Math.sin(yaw) * cosPitch, Math.sin(pitch), -Math.cos(yaw) * cosPitch)
-        .normalize();
-    }
-
-    try {
-      this._player.updateMatrixWorld(true);
-      this._player.getWorldPosition(this._camPosW);
-    } catch {
-      this._camera.updateMatrixWorld(true);
-      this._camera.getWorldPosition(this._camPosW);
-    }
-
+    // The mark is at the centre of the view, so it comes from the camera that draws the frame. An application can move
+    // the camera without the navigation rig (Conduit's and Loom's viewports do), so the rig's position and look would
+    // put the mark somewhere else on the screen every time the view is dragged.
+    this._camera.updateWorldMatrix(true, false);
+    this._camera.getWorldPosition(this._camPosW);
+    this._camera.getWorldQuaternion(this._tmpQuat).normalize();
+    this._forwardW.set(0, 0, -1).applyQuaternion(this._tmpQuat).normalize();
     this._crossPos.copy(this._camPosW).addScaledVector(this._forwardW, distance);
     this._facingCrosshair.position.copy(this._crossPos);
-
-    try {
-      this._camera.updateMatrixWorld(true);
-      this._camera.getWorldPosition(this._crossCamDistW);
-    } catch {
-      this._crossCamDistW.copy(this._camPosW);
-    }
-
-    const distanceToCamera = Math.max(
-      MIN_CAMERA_DISTANCE,
-      this._crossCamDistW.distanceTo(this._crossPos)
-    );
-    const scale = Math.max(
-      MIN_CROSSHAIR_SCALE,
-      Math.min(MAX_CROSSHAIR_SCALE, distanceToCamera / distance)
-    );
-    this._facingCrosshair.scale.setScalar(scale);
-
-    // Rotate the planar crosshair so its +Z normal points back toward the
-    // camera-facing direction, which keeps the overlay visually perpendicular
-    // to the viewer after the distance-scaled placement above.
-    this._tmpVec3.copy(this._forwardW).multiplyScalar(-1).normalize();
-    this._crossQuatW.setFromUnitVectors(this._axisZ, this._tmpVec3);
-    this._facingCrosshair.quaternion.copy(this._crossQuatW);
+    this._facingCrosshair.scale.setScalar(1);
+    this._facingCrosshair.quaternion.copy(this._tmpQuat);
     this._facingCrosshair.visible = true;
   }
 

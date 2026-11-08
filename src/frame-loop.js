@@ -75,6 +75,12 @@ export function renderHudFrame({
 
   // IMPORTANT (WebXR): Three.js updates XR controller poses during render().
   // The HUD library's VR picking relies on those poses, so render first in XR.
+  // Desktop: the facing mark follows the camera this frame will be drawn from, however the application moved it.
+  try {
+    navigation?.syncOverlay?.();
+  } catch {
+    // no-op
+  }
   renderer.render(scene, camera);
 
   try {

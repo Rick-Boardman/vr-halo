@@ -106,7 +106,7 @@ export function resolveVrPointerUiHandBlockState({
  * @param {number} [options.debugFacingCrosshairSize=0.06] World-space size of the facing-crosshair debug overlay.
  * @param {{ log?: (event: string, data: unknown) => void } | null} [options.remoteLogger=null] Optional remote logger consumed by the navigation telemetry adapter.
  * @param {string} [options.keyboardKeyMode=DESKTOP_NAVIGATION_DEFAULTS.keyboardKeyMode] Desktop keyboard mapping mode: "smart", "key", or "code".
- * @returns {{ update: (dt?: number) => void, renderOverlay: () => void, lookAtWorld: (targetWorldPos: unknown) => void, dispose: () => void, keysDown: unknown, isLookDragging: boolean, autoWalk: boolean }} Navigation controller with per-frame update/render hooks, a world-look helper, lifecycle disposal, active desktop key state, and live desktop movement flags.
+ * @returns {{ update: (dt?: number) => void, renderOverlay: () => void, syncOverlay: () => void, lookAtWorld: (targetWorldPos: unknown) => void, dispose: () => void, keysDown: unknown, isLookDragging: boolean, autoWalk: boolean }} Navigation controller with per-frame update/render hooks, a world-look helper, lifecycle disposal, active desktop key state, and live desktop movement flags.
  * Side effects: allocates navigation helper objects, may install desktop DOM listeners via createDesktopNavigationControls, publishes the shared HUD help profile, mutates player position and rig look state during updates, may render a facing-crosshair overlay, and may emit remote telemetry through the supplied logger.
  */
 export function createSceneNavigation({
@@ -329,10 +329,6 @@ export function createSceneNavigation({
     renderer,
     camera,
     scene,
-    player,
-    getYaw,
-    getPitch,
-    getQuaternion,
     getVrCameraPivotWorldPos,
     isEnabled: () => !!(debugFacingCrosshair && scene),
     distance: debugFacingCrosshairDistance,
@@ -718,6 +714,11 @@ export function createSceneNavigation({
     facingCrosshairOverlay.render();
   }
 
+  /** Just before the frame is drawn on desktop: what must follow the camera as the frame will see it. */
+  function syncOverlay() {
+    facingCrosshairOverlay.sync();
+  }
+
   function lookAtWorld(targetWorldPos) {
     if (!targetWorldPos) return;
     // Use camera world position as the look origin.
@@ -746,6 +747,7 @@ export function createSceneNavigation({
   return {
     update,
     renderOverlay,
+    syncOverlay,
     lookAtWorld,
     dispose,
     keysDown: desktopControls.keysDown,

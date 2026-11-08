@@ -6,6 +6,12 @@ The four Noto WOFF binaries match their corresponding paths under
 https://cdn.jsdelivr.net/gh/lojjic/unicode-font-resolver@v1.0.1/packages/data/.
 No font names or outlines were modified.
 
+Changed 2026-11-08: inter-latin-400-normal.woff and unicode-fonts/font-files/latin/sans-serif.normal.400.woff had their
+GSUB chaining-context lookups of formats 1 and 2 removed (three subtables in Inter, two in the Latin fallback): Troika's
+font parser cannot read them, ignored them, and printed "unsupported GSUB table LookupType 6" for each in every page's
+console. Troika draws the same text. So those two files no longer match the upstream bytes above; names, outlines,
+kerning and every other lookup are unchanged. Neither font has a Reserved Font Name.
+
 The shipped jp-83 and symbols-2 font metadata and plane0/2500-25ff codepoint
 index are adapted subsets of that dataset; other shipped metadata matches it.
 The dataset's MIT license is preserved in unicode-font-resolver-MIT.txt.
