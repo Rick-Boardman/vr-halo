@@ -584,6 +584,8 @@ export function createHudClickRuntime({
 
       if (allowDragStart && w.draggable && w.dragAnywhere && !w.collapsed) {
         w.dragging = true;
+        w.dragStartX = w.x;
+        w.dragStartY = w.y;
         w.dragOffX = px - w.x;
         w.dragOffY = py - w.y;
         setDragMode("move");
@@ -595,6 +597,8 @@ export function createHudClickRuntime({
       const titleSlop = renderer.xr.isPresenting ? 6 : 0;
       if (allowDragStart && w.draggable && rectContainsSlop(w.x, w.y, w.w, titleHeightPx, px, py, titleSlop)) {
         w.dragging = true;
+        w.dragStartX = w.x;
+        w.dragStartY = w.y;
         w.dragOffX = px - w.x;
         w.dragOffY = py - w.y;
         setDragMode("move");

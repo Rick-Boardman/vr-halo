@@ -18,3 +18,11 @@ libraries where needed instead of working around them, and leave notes like thes
 - **Fonts**: `src/assets/LICENSES/README.md` records the GSUB lookups removed from Inter and the Latin fallback, so
   Troika stops printing "unsupported GSUB table LookupType 6". If those fonts are refreshed from upstream the messages come
   back unless the same lookups are removed.
+- **HUD windows keep their place in the viewer** (`src/hud-window-anchor.js`, `reanchorWindows` in
+  `src/hud-window-layout-runtime.js`, `src/hud-resize-runtime.js`): a resize no longer sets `_layoutInitialized = false`, which
+  re-ran the default or saved layout. Each window stays against its nearest edge on each axis (or the centre, in the middle
+  third), and goes back to its place after being clamped by a small viewer. Saved layouts record the viewer's size
+  (`__viewer`), so a reload in another size keeps the same edges.
+- **`win.userPlaced`** (`src/hud-click-runtime.js`, `src/hud-drag-reset-runtime.js`): set when a person drags a window; saved
+  with the layout. Applications that lay out windows should leave those alone (Conduit and Loom now do). Tests:
+  `tests/hud-window-anchor.test.mjs`.

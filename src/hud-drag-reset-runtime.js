@@ -65,6 +65,8 @@ export function createHudDragResetRuntime({
     if (dragWindowKey) {
       const w = hud.ui.windows?.[dragWindowKey];
       if (w) {
+        // A person put it there: applications leave a window so placed where it is (`userPlaced`).
+        if (w.dragging && (Math.abs(w.x - w.dragStartX) > 1 || Math.abs(w.y - w.dragStartY) > 1)) w.userPlaced = true;
         w.dragging = false;
         w.resizing = false;
       }

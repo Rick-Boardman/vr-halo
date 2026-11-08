@@ -22,7 +22,8 @@ export function createHudPanelStorageRuntime({ hud, renderer, storageKeyPrefix =
   function saveLayout() {
     const windows = hud.ui?.windows;
     if (!windows || typeof windows !== "object") return;
-    const snap = {};
+    // The viewer they were saved in: a later, different-sized viewer keeps them against the same edges.
+    const snap = { __viewer: { w: Math.round(Number(hud.layoutW) || 0), h: Math.round(Number(hud.layoutH) || 0) } };
     for (const [key, win] of Object.entries(windows)) {
       if (Number(win?.y) < -1000) continue;
       snap[key] = {
@@ -31,6 +32,7 @@ export function createHudPanelStorageRuntime({ hud, renderer, storageKeyPrefix =
         w: Math.round(win.w),
         h: Math.round(win.h),
         collapsed: !!win.collapsed,
+        ...(win.userPlaced ? { userPlaced: true } : {}),
       };
     }
     try {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { placeSaved } from "./hud-window-anchor.js";
 import { HUD_WINDOW_EDGE_MARGIN_PX, HUD_WINDOW_TITLE_HEIGHT_PX } from "./hud-layout-policy.js";
 
 /**
@@ -113,11 +114,13 @@ export function createHudWindowFactoryRuntime({
       const saved = loadLayout();
       const s = saved?.[key];
       if (s) {
-        if (Number.isFinite(s.x)) win.x = s.x;
-        if (Number.isFinite(s.y)) win.y = s.y;
         if (Number.isFinite(s.w)) win.w = Math.max(win.minW, s.w);
         if (Number.isFinite(s.h)) win.h = Math.max(win.minH, s.h);
         if (typeof s.collapsed === "boolean") win.collapsed = s.collapsed;
+        const savedHeight = win.collapsed ? HUD_WINDOW_TITLE_HEIGHT_PX : win.h;
+        if (Number.isFinite(s.x)) win.x = placeSaved(s.x, win.w, Number(saved.__viewer?.w), Number(hud.layoutW));
+        if (Number.isFinite(s.y)) win.y = placeSaved(s.y, savedHeight, Number(saved.__viewer?.h), Number(hud.layoutH));
+        if (s.userPlaced) win.userPlaced = true;
         // Clamp to viewport so saved offscreen positions don't hide panels.
         if (win.y >= -1000 && hud.layoutW > 0 && hud.layoutH > 0) {
           const h = win.collapsed ? HUD_WINDOW_TITLE_HEIGHT_PX : win.h;

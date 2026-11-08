@@ -10,6 +10,7 @@
  * @param {() => void} options.setLayoutForMode Callback that recomputes HUD layout dimensions for the current presentation mode.
  * @param {() => void} options.updateHudQuadSize Callback that applies HUD quad scaling after layout changes.
  * @param {() => void} options.markDirty Callback invoked when resize processing requires a HUD rerender.
+ * @param {(previousW: number, previousH: number) => void} [options.reanchorWindows] Keeps windows in place relative to the viewer after a size change.
  * @returns {{handleResize: () => void, disposeAutoResize: () => void}} Resize helpers for explicit resize handling and listener cleanup.
  * Side effects: may register/remove a global `window` resize listener, may mutate renderer and camera sizing in desktop mode, and mutates HUD layout-init state.
  */
@@ -22,11 +23,16 @@ export function createHudResizeRuntime({
   setLayoutForMode,
   updateHudQuadSize,
   markDirty,
+  reanchorWindows = null,
 } = {}) {
   function handleResize() {
+    const previousW = Number(hud.layoutW);
+    const previousH = Number(hud.layoutH);
     setLayoutForMode();
     updateHudQuadSize();
-    hud.ui._layoutInitialized = false;
+    // Windows are laid out once; after that a resize keeps each where it is relative to the viewer. Laying them out again
+    // here threw away where a person had put them.
+    if (hud.ui._layoutInitialized) reanchorWindows?.(previousW, previousH);
     markDirty();
   }
 

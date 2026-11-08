@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { HUD_WINDOW_EDGE_MARGIN_PX } from "./hud-layout-policy.js";
+import { axisAnchor, axisPlace, placeSaved } from "./hud-window-anchor.js";
 
 /**
  * Create shared HUD window-layout helpers for desktop clamping and one-time default window placement.
@@ -72,11 +73,13 @@ export function createHudWindowLayoutRuntime({
         const win = windows[key];
         const s = saved[key];
         if (!win || !s) continue;
-        if (Number.isFinite(s.x)) win.x = s.x;
-        if (Number.isFinite(s.y)) win.y = s.y;
         if (Number.isFinite(s.w)) win.w = Math.max(win.minW, s.w);
         if (Number.isFinite(s.h)) win.h = Math.max(win.minH, s.h);
         if (typeof s.collapsed === "boolean") win.collapsed = s.collapsed;
+        const height = win.collapsed ? titleHeightPx : win.h;
+        if (Number.isFinite(s.x)) win.x = placeSaved(s.x, win.w, Number(saved.__viewer?.w), W);
+        if (Number.isFinite(s.y)) win.y = placeSaved(s.y, height, Number(saved.__viewer?.h), H);
+        if (s.userPlaced) win.userPlaced = true;
       }
       // Hide xr window if unsupported (regardless of saved data).
       const xrWin = windows.xr;
@@ -248,8 +251,50 @@ export function createHudWindowLayoutRuntime({
     hud.ui._layoutInitialized = true;
   }
 
+  /**
+   * The viewer changed size: every window keeps its place relative to the viewer's edges (hud-window-anchor.js). The
+   * anchor is kept while the window has not been moved, so a window clamped in a small viewer returns to its place in
+   * a larger one.
+   */
+  function reanchorWindows(previousW, previousH) {
+    if (renderer.xr.isPresenting) return;
+    const W = Number(hud.layoutW);
+    const H = Number(hud.layoutH);
+    if (!(W > 0 && H > 0 && previousW > 0 && previousH > 0)) return;
+    if (W === previousW && H === previousH) return;
+    for (const [key, win] of Object.entries(hud.ui?.windows ?? {})) {
+      if (!win) continue;
+      const hidden = Number(win.y) < -1000;
+      if (hidden && !(Number.isFinite(win._hiddenX) && Number.isFinite(win._hiddenY))) continue;
+      if (key === "hotbar" && !hidden && (hud.ui?.data?.hotbarPlacement ?? "bottom") === "bottom") {
+        const maxW = Math.max(280, W - 2 * HUD_WINDOW_EDGE_MARGIN_PX);
+        win.minW = Math.min(win.minW || maxW, maxW);
+        win.w = Math.min(win.w, maxW);
+      }
+      const x = hidden ? Number(win._hiddenX) : Number(win.x);
+      const y = hidden ? Number(win._hiddenY) : Number(win.y);
+      const height = win.collapsed ? titleHeightPx : Number(win.h);
+      const kept = win._viewerAnchor;
+      const anchorX = kept && Math.abs(x - kept.atX) <= 1 ? kept.x : axisAnchor(x, Number(win.w), previousW);
+      const anchorY = kept && Math.abs(y - kept.atY) <= 1 ? kept.y : axisAnchor(y, height, previousH);
+      const nextX = axisPlace(anchorX, Number(win.w), W);
+      const nextY = axisPlace(anchorY, height, H);
+      if (hidden) {
+        win._hiddenX = clamp(nextX, 0, Math.max(0, W - Number(win.w)));
+        win._hiddenY = clamp(nextY, 0, Math.max(0, H - height));
+        win._viewerAnchor = { x: anchorX, y: anchorY, atX: win._hiddenX, atY: win._hiddenY };
+      } else {
+        win.x = nextX;
+        win.y = nextY;
+        clampWindowToBounds(key, win);
+        win._viewerAnchor = { x: anchorX, y: anchorY, atX: Number(win.x), atY: Number(win.y) };
+      }
+    }
+  }
+
   return {
     ensureDefaultLayout,
     clampWindowToBounds,
+    reanchorWindows,
   };
 }

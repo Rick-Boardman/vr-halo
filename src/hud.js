@@ -1168,6 +1168,7 @@ export function createHudSystem(
     setLayoutForMode,
     updateHudQuadSize,
     markDirty,
+    reanchorWindows: (previousW, previousH) => _windowLayoutRuntime.reanchorWindows(previousW, previousH),
   });
 
   const _panelStorage = createHudPanelStorageRuntime({
