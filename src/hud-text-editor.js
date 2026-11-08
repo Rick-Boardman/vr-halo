@@ -357,6 +357,7 @@ export function createHudTextEditor({
       actionButtonTextColor: showingPlaceholder ? HUD_TEXT_MUTED_COLOR : HUD_TEXT_DEFAULT_COLOR,
       actionButtonBgColor: 0x12161c,
       actionButtonBgOpacity: 0.96,
+      actionButtonHeightPx: 44,
     }];
   }
 

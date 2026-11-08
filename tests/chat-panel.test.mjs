@@ -202,6 +202,41 @@ test("enter sends the footer text and clears it only after the send succeeds", a
   }
 });
 
+test("a setWindowLines wrapper that drops options cannot erase the field", () => {
+  const env = harness();
+  env.hudSystem.setWindowLines = (keyName, entries) => {
+    env.lineCalls.push({ key: keyName, entries, options: undefined });
+    const win = env.hudSystem.hud.ui.windows[keyName];
+    if (win) win._footerEntries = [];
+  };
+  const panel = createHudChatPanel({
+    hudSystem: env.hudSystem,
+    renderer: env.renderer,
+    transport: {
+      subscribe() {
+        return () => {};
+      },
+      send() {
+        return Promise.resolve();
+      },
+    },
+    key: "race-chat",
+    title: "RIDERS",
+    h: 260,
+    composerHeight: 72,
+  });
+  try {
+    const win = env.hudSystem.hud.ui.windows["race-chat"];
+    assert.equal(win.scrollMode, "bottom");
+    assert.equal(win._footerEntries.length, 1);
+    assert.equal(win._footerEntries[0].actionButtonText, "Say something");
+    assert.equal(win._footerEntries[0].actionButtonSourceText, "");
+    assert.ok(win._footerEntries[0].actionButtonHeightPx >= 36);
+  } finally {
+    panel.dispose();
+  }
+});
+
 test("a window editor still receives the footer buttons it was given", () => {
   const env = harness();
   env.hudSystem.createWindow("notes", { title: "NOTES", x: 0, y: 0, w: 400, h: 300 });

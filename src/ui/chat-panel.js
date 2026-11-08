@@ -185,10 +185,19 @@ export function createHudChatPanel({
     }
     if (trouble) entries.push({ text: trouble, color: palette.trouble });
 
+    const footerEntries = editor.footerEntries?.() ?? [];
     hudSystem.setWindowLines(transcriptKey, entries, {
       scrollMode: "bottom",
-      footerEntries: editor.footerEntries?.() ?? [],
+      footerEntries,
     });
+    // Some games wrap setWindowLines and drop the options argument. The real
+    // setter then clears _footerEntries on every paint, which erases this
+    // field. Write the footer after that call so the input stays in the panel.
+    const win = hudSystem.hud?.ui?.windows?.[transcriptKey];
+    if (win) {
+      win._footerEntries = footerEntries.slice();
+      win.scrollMode = "bottom";
+    }
   }
 
   function attach(next) {

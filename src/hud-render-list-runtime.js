@@ -166,7 +166,15 @@ export function createHudRenderListRuntime({
     const effectiveCh = Math.max(0, Number(ch) || 0);
     const lineH = 12 * labelDot;
     const footerActions = normalizeFooterActions(win?._footerEntries);
-    const footerButtonH = footerActions.length ? Math.max(14, Math.floor(lineH * 1.35)) : 0;
+    let requestedFooterH = 0;
+    for (const button of footerActions) {
+      if (Number.isFinite(button.heightPx)) {
+        requestedFooterH = Math.max(requestedFooterH, Math.floor(button.heightPx));
+      }
+    }
+    const footerButtonH = footerActions.length
+      ? Math.max(14, Math.floor(lineH * 1.35), requestedFooterH)
+      : 0;
     const footerReservedHeight = footerActions.length
       ? footerButtonH + HUD_FOOTER_ACTION_BOTTOM_INSET_PX + HUD_FOOTER_DIVIDER_GAP_PX + HUD_FOOTER_DIVIDER_HEIGHT_PX
       : 0;
@@ -834,7 +842,8 @@ export function createHudRenderListRuntime({
             ? clamp(Number(button.textInsetPx), 4, Math.max(4, buttonW - 4))
             : Math.max(4, Math.floor(buttonW * 0.28));
           const textX = nextX + textInset;
-          const textY = buttonY + Math.max(1, Math.floor((footerButtonH - lineH) * 0.25));
+          const textAlign = Number.isFinite(button.heightPx) ? 0.5 : 0.25;
+          const textY = buttonY + Math.max(1, Math.floor((footerButtonH - lineH) * textAlign));
           if (hasButtonText && label?.setRenderOrder && label?.setText) {
             try {
               label.setRenderOrder(roBase + 20);
@@ -1531,6 +1540,7 @@ function normalizeFooterActions(entries) {
         bgColor: typeof entry.actionButtonBgColor === "number" ? entry.actionButtonBgColor : null,
         bgOpacity: Number.isFinite(entry.actionButtonBgOpacity) ? Number(entry.actionButtonBgOpacity) : null,
         textInsetPx: Number.isFinite(entry.actionButtonTextInsetPx) ? Number(entry.actionButtonTextInsetPx) : null,
+        heightPx: Number.isFinite(entry.actionButtonHeightPx) ? Number(entry.actionButtonHeightPx) : null,
         sourceText: typeof entry.actionButtonSourceText === "string" ? entry.actionButtonSourceText : null,
       };
     })
