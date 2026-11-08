@@ -97,6 +97,10 @@ export function createFlatSceneViewportControls({
   // single-finger touch (e.g. select-rectangle mode).
   let singleTouchPan = null;
   const touchPoints = new Map();
+  // The fit in force, while the view is still that fit: the pane changing size fits it again (see fitBounds).
+  const fittedBox = new THREE.Box3();
+  let fitted = null;
+  let fittedSize = "";
 
   function isInputBlocked(event) {
     if (renderer.xr?.isPresenting) return true;
@@ -134,6 +138,7 @@ export function createFlatSceneViewportControls({
   }
 
   function notifyInteraction() {
+    fitted = null;
     onInteraction?.();
   }
 
@@ -212,6 +217,7 @@ export function createFlatSceneViewportControls({
   }
 
   function setDistance(nextDistance, { clientX = Number.NaN, clientY = Number.NaN, anchorClientPoint = false } = {}) {
+    fitted = null;
     const previousDistance = currentDistance;
     currentDistance = clampDistance(nextDistance, minDistance, maxDistance);
     if (anchorClientPoint && Math.abs(previousDistance - currentDistance) > 1e-6) {
@@ -389,28 +395,50 @@ export function createFlatSceneViewportControls({
 
   function setTarget(nextTarget) {
     if (!nextTarget) return;
+    fitted = null;
     target.copy(nextTarget);
     applyCameraTransform();
   }
 
-  function fitBounds(box, { padding = 1.24, minDistance: fitMin = minDistance, maxDistance: fitMax = maxDistance } = {}) {
-    if (!box?.getCenter || !box?.getSize || box?.isEmpty?.()) return;
-    box.getCenter(centerScratch);
-    box.getSize(sizeScratch);
+  function viewAspect() {
+    // The element as it is now: a resize handler may not have reached the camera yet.
+    const width = Number(dom.clientWidth);
+    const height = Number(dom.clientHeight);
+    return width > 0 && height > 0 ? width / height : Number(camera?.aspect ?? 1);
+  }
+
+  function applyFit() {
+    const { padding, fitMin, fitMax, shiftX } = fitted;
+    fittedBox.getCenter(centerScratch);
+    fittedBox.getSize(sizeScratch);
 
     const vFov = Math.PI * (Number(camera?.fov ?? 60) / 180);
-    const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * Number(camera?.aspect ?? 1));
+    const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * viewAspect());
     const footprintW = Math.max(1, sizeScratch.x * padding);
     const footprintH = Math.max(1, Number(sizeScratch?.[fitHeightAxis] ?? sizeScratch.z ?? 1) * padding);
     const fitH = (footprintW * 0.5) / Math.tan(hFov * 0.5);
     const fitV = (footprintH * 0.5) / Math.tan(vFov * 0.5);
 
     target.copy(centerScratch);
+    target.x += sizeScratch.x * shiftX;
     if (resolvedFlatPlane === "xz") {
       target.y = Math.max(target.y, 0);
     }
     currentDistance = clampDistance(Math.max(fitH, fitV, fitMin), fitMin, fitMax);
     applyCameraTransform();
+  }
+
+  /**
+   * Frame a box in the view. The view stays that fit when the element changes size (a browser resized or zoomed, a
+   * pane laid out again) until the person or the application moves it. `shiftX`: move the view by that fraction of the
+   * box's width after fitting (an application's deliberate offset, kept when it fits again).
+   */
+  function fitBounds(box, { padding = 1.24, minDistance: fitMin = minDistance, maxDistance: fitMax = maxDistance, shiftX = 0 } = {}) {
+    if (!box?.getCenter || !box?.getSize || box?.isEmpty?.()) return;
+    fittedBox.copy(box);
+    fitted = { padding, fitMin, fitMax, shiftX: Number(shiftX) || 0 };
+    fittedSize = `${dom.clientWidth}x${dom.clientHeight}`;
+    applyFit();
   }
 
   function setViewAngles(nextYaw, nextPitch) {
@@ -431,6 +459,16 @@ export function createFlatSceneViewportControls({
   listenerRegistry.listen(dom, "wheel", onWheel, { passive: false });
   listenerRegistry.listen(window, "keydown", onKeyDown);
 
+  const resizeObserver = typeof ResizeObserver === "function"
+    ? new ResizeObserver(() => {
+      const size = `${dom.clientWidth}x${dom.clientHeight}`;
+      if (size === fittedSize) return;
+      fittedSize = size;
+      if (fitted && dom.clientWidth > 0 && dom.clientHeight > 0 && !renderer.xr?.isPresenting) applyFit();
+    })
+    : null;
+  resizeObserver?.observe(dom);
+
   applyCameraTransform();
 
   return {
@@ -449,6 +487,7 @@ export function createFlatSceneViewportControls({
       singleTouchPan = null;
       touchPoints.clear();
       listenerRegistry.clear();
+      resizeObserver?.disconnect();
     },
   };
 }
