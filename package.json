@@ -1,6 +1,6 @@
 {
   "name": "@rb/halo",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Browser-native Three.js and WebXR runtime with scene, navigation, input, and WebGL HUD primitives.",
   "private": true,
   "type": "module",

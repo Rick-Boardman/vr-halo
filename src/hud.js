@@ -1412,6 +1412,8 @@ export function createHudSystem(
       applyHudWindowSkinToWindows({ THREE, hud }, windowKeys, textures, options.cornerSize),
     isPointOverUi: (px, py) => _windowStateRuntime.isPointOverUi(px, py),
     isClientPointOverUi: (clientX, clientY) => _windowStateRuntime.isClientPointOverUi(clientX, clientY),
+    enterVR,
+    exitVR,
   };
 
   // Create hover outline after API exists (so getHudSystem works).

@@ -52,6 +52,9 @@ export function createHudVrAutoLayoutRuntime({
     for (const key of order) {
       const w = windows[key];
       if (!w) continue;
+      // Enter VR is parked until the headset check finishes. A session can
+      // start on that same turn, and this window is the Exit VR control.
+      if (key === "xr" && w.y < -1000) w.y = pad;
       if (w.y < -1000) continue;
 
       const p = pinned[key];

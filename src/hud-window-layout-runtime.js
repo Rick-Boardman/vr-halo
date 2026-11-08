@@ -55,6 +55,36 @@ export function createHudWindowLayoutRuntime({
     win.y = clamp(win.y, 0, Math.max(0, hud.layoutH - h));
   }
 
+  // Support is checked after the first layout. Parking the Enter VR window before that
+  // check returns, then saving, drops it: a hidden window is not stored, and a later
+  // layout will not invent it. Remember the on-screen place, and put it back once a
+  // headset can start a session. A place that was only the off-screen preset is clamped
+  // to the right edge, clear of a status panel in the top left.
+  function parkXrUntilSupported(xrWin) {
+    if (!xrWin || hud.xr.supported) return false;
+    if (Number(xrWin.y) >= -1000) {
+      xrWin._hiddenX = xrWin.x;
+      xrWin._hiddenY = xrWin.y;
+    }
+    xrWin.x = rightX;
+    xrWin.y = hiddenY;
+    return true;
+  }
+
+  function restoreParkedXr(xrWin) {
+    if (!xrWin || !hud.xr.supported) return;
+    if (Number(xrWin.y) >= -1000) return;
+    const backX = Number(xrWin._hiddenX);
+    const backY = Number(xrWin._hiddenY);
+    if (Number.isFinite(backX) && Number.isFinite(backY) && backY >= -1000) {
+      xrWin.x = backX;
+      xrWin.y = backY;
+    } else {
+      xrWin.x = rightX;
+      xrWin.y = 0;
+    }
+  }
+
   function ensureDefaultLayout() {
     if (hud.ui._layoutInitialized) return;
 
@@ -81,12 +111,7 @@ export function createHudWindowLayoutRuntime({
         if (Number.isFinite(s.y)) win.y = placeSaved(s.y, height, Number(saved.__viewer?.h), H);
         if (s.userPlaced) win.userPlaced = true;
       }
-      // Hide xr window if unsupported (regardless of saved data).
-      const xrWin = windows.xr;
-      if (xrWin && !hud.xr.supported) {
-        xrWin.x = rightX;
-        xrWin.y = hiddenY;
-      }
+      if (!parkXrUntilSupported(windows.xr)) restoreParkedXr(windows.xr);
       for (const key of order) {
         const win = windows?.[key];
         if (win) clampWindowToBounds(key, win);
@@ -99,13 +124,14 @@ export function createHudWindowLayoutRuntime({
 
     const xrWin = windows.xr;
     if (xrWin) {
-      if (hud.xr.supported) {
-        xrWin.x = Math.round(0.01 * W);
-        xrWin.y = Math.round(0.02 * H);
-        xrWin.w = Math.round(Math.min(xrWin.w, 0.26 * W));
-      } else {
-        xrWin.x = rightX;
-        xrWin.y = hiddenY;
+      if (!parkXrUntilSupported(xrWin) && hud.xr.supported) {
+        if (Number(xrWin.y) < -1000) {
+          restoreParkedXr(xrWin);
+        } else {
+          xrWin.x = Math.round(0.01 * W);
+          xrWin.y = Math.round(0.02 * H);
+          xrWin.w = Math.round(Math.min(xrWin.w, 0.26 * W));
+        }
       }
     }
 
