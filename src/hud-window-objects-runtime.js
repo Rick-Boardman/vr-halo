@@ -58,6 +58,7 @@ export function createHudWindowObjectsRuntime({
   surfaceAccentColor,
   surfaceContentBgColor,
   surfaceTitleBarColor,
+  surfaceControlStyle = "filled",
   textDefaultColor,
 } = {}) {
   let hotbarBgTexture = null;
@@ -145,12 +146,15 @@ export function createHudWindowObjectsRuntime({
     });
   }
 
+  const quietControls = surfaceControlStyle === "quiet";
+  const hotbarRadiusPx = quietControls ? 8 : 18;
+
   function getHotbarFillTexture() {
     if (!hotbarBgTexture) {
       hotbarBgTexture = createRoundedRectTexture({
         width: 640,
         height: 80,
-        radius: 18,
+        radius: hotbarRadiusPx,
         fill: true,
       });
     }
@@ -162,7 +166,7 @@ export function createHudWindowObjectsRuntime({
       hotbarOutlineTexture = createRoundedRectTexture({
         width: 640,
         height: 80,
-        radius: 18,
+        radius: hotbarRadiusPx,
         strokeWidth: 2,
         fill: false,
         stroke: true,
@@ -176,7 +180,7 @@ export function createHudWindowObjectsRuntime({
       hotbarShadowTexture = createRoundedRectTexture({
         width: 640,
         height: 80,
-        radius: 18,
+        radius: hotbarRadiusPx,
         fill: true,
       });
     }
@@ -248,10 +252,10 @@ export function createHudWindowObjectsRuntime({
     if (!closeButtonTexture) {
       closeButtonTexture = createCanvasTexture(96, 96, (ctx) => {
         roundedRectPath(ctx, 8, 4, 80, 88, 14);
-        ctx.fillStyle = "rgba(233,69,96,0.88)";
+        ctx.fillStyle = quietControls ? "rgba(255,255,255,0.07)" : "rgba(233,69,96,0.88)";
         ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.96)";
-        ctx.lineWidth = 7;
+        ctx.strokeStyle = quietControls ? "rgba(214,224,235,0.92)" : "rgba(255,255,255,0.96)";
+        ctx.lineWidth = quietControls ? 6 : 7;
         ctx.lineCap = "round";
         ctx.beginPath();
         ctx.moveTo(31, 31);
@@ -272,10 +276,10 @@ export function createHudWindowObjectsRuntime({
       const ab = accent & 0xff;
       minButtonTexture = createCanvasTexture(96, 96, (ctx) => {
         roundedRectPath(ctx, 8, 4, 80, 88, 14);
-        ctx.fillStyle = `rgba(${ar},${ag},${ab},0.88)`;
+        ctx.fillStyle = quietControls ? "rgba(255,255,255,0.07)" : `rgba(${ar},${ag},${ab},0.88)`;
         ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.94)";
-        ctx.lineWidth = 7;
+        ctx.strokeStyle = quietControls ? "rgba(214,224,235,0.92)" : "rgba(255,255,255,0.94)";
+        ctx.lineWidth = quietControls ? 6 : 7;
         ctx.lineCap = "round";
         ctx.beginPath();
         ctx.moveTo(29, 48);
@@ -289,7 +293,7 @@ export function createHudWindowObjectsRuntime({
   function getScrollbarTrackTexture() {
     if (!scrollbarTrackTexture) {
       scrollbarTrackTexture = createCanvasTexture(88, 256, (ctx) => {
-        ctx.fillStyle = "rgba(20,30,50,0.72)";
+        ctx.fillStyle = quietControls ? "rgba(255,255,255,0.05)" : "rgba(20,30,50,0.72)";
         ctx.fillRect(0, 0, 88, 256);
       });
     }
@@ -300,7 +304,7 @@ export function createHudWindowObjectsRuntime({
     if (!scrollbarThumbTexture) {
       scrollbarThumbTexture = createCanvasTexture(88, 160, (ctx) => {
         roundedRectPath(ctx, 12, 0, 64, 160, 12);
-        ctx.fillStyle = "rgba(83,179,203,0.84)";
+        ctx.fillStyle = quietControls ? "rgba(122,142,165,0.82)" : "rgba(83,179,203,0.84)";
         ctx.fill();
       });
     }
@@ -310,9 +314,11 @@ export function createHudWindowObjectsRuntime({
   function createScrollbarArrowTexture(direction, enabled) {
     return createCanvasTexture(88, 80, (ctx) => {
       roundedRectPath(ctx, 8, 0, 72, 80, 12);
-      ctx.fillStyle = enabled ? "rgba(83,179,203,0.92)" : "rgba(83,179,203,0.2)";
+      if (quietControls) ctx.fillStyle = enabled ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)";
+      else ctx.fillStyle = enabled ? "rgba(83,179,203,0.92)" : "rgba(83,179,203,0.2)";
       ctx.fill();
-      ctx.fillStyle = enabled ? "rgba(255,255,255,0.96)" : "rgba(85,85,85,0.9)";
+      if (quietControls) ctx.fillStyle = enabled ? "rgba(214,224,235,0.92)" : "rgba(122,142,165,0.4)";
+      else ctx.fillStyle = enabled ? "rgba(255,255,255,0.96)" : "rgba(85,85,85,0.9)";
       ctx.beginPath();
       if (direction === "up") {
         ctx.moveTo(44, 22);

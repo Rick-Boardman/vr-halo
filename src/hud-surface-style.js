@@ -140,6 +140,30 @@ export const HUD_THEME_TERMINAL = Object.freeze({
 });
 
 /**
+ * Purpose: Define the business HUD theme: quiet slate panels, neutral outlines and one blue accent,
+ * for applications that sit beside ordinary business software (Conduit and Loom are the first consumers).
+ * Parameters: none.
+ * Return value: Frozen HUD theme descriptor.
+ * Side effects: none.
+ * @type {{ key: string, panelBgColor: number, panelBgOpacity: number, titleBarColor: number, titleBarOpacity: number, contentBgColor: number, contentBgOpacity: number, accentColor: number, borderColor: number, borderOpacity: number, titleTextColor: number, controlStyle: string }}
+ */
+export const HUD_THEME_BUSINESS = Object.freeze({
+	key: "business",
+	panelBgColor: 0x131d29,
+	panelBgOpacity: 1,
+	titleBarColor: 0x1b2836,
+	titleBarOpacity: 1,
+	contentBgColor: 0x131d29,
+	contentBgOpacity: 1,
+	accentColor: 0x4c8bd0,
+	borderColor: 0x33445a,
+	borderOpacity: 1,
+	borderInset: 0,
+	titleTextColor: 0xdfe7f0,
+	controlStyle: "quiet",
+});
+
+/**
  * Purpose: Resolve a caller-supplied HUD theme preset or override bag into a full theme object.
  * Parameters:
  *   - theme: preset name or partial theme override bag.
@@ -149,7 +173,7 @@ export const HUD_THEME_TERMINAL = Object.freeze({
  * @returns {{ key: string, panelBgColor: number, panelBgOpacity: number, titleBarColor: number, titleBarOpacity: number, contentBgColor: number, contentBgOpacity: number, accentColor: number }}
  */
 export function resolveHudTheme(theme) {
-	if (theme === HUD_THEME_CLASSIC || theme === HUD_THEME_PROFESSIONAL || theme === HUD_THEME_TERMINAL) {
+	if (theme === HUD_THEME_CLASSIC || theme === HUD_THEME_PROFESSIONAL || theme === HUD_THEME_TERMINAL || theme === HUD_THEME_BUSINESS) {
 		return theme;
 	}
 
@@ -159,6 +183,8 @@ export function resolveHudTheme(theme) {
 		base = HUD_THEME_CLASSIC;
 	} else if (token === "terminal" || token === "wireframe" || token === "retro") {
 		base = HUD_THEME_TERMINAL;
+	} else if (token === "business") {
+		base = HUD_THEME_BUSINESS;
 	} else {
 		base = HUD_THEME_PROFESSIONAL;
 	}
@@ -180,6 +206,7 @@ export function resolveHudTheme(theme) {
 		borderOpacity: Number.isFinite(theme.borderOpacity) ? Number(theme.borderOpacity) : base.borderOpacity,
 		borderInset: Number.isFinite(theme.borderInset) ? Number(theme.borderInset) : base.borderInset,
 		titleTextColor: theme.titleTextColor ?? base.titleTextColor,
+		controlStyle: theme.controlStyle ?? base.controlStyle,
 	});
 }
 

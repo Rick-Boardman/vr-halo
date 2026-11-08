@@ -69,6 +69,7 @@ export function createHudBuildUiRuntime({
     surfaceAccentColor: resolvedTheme.accentColor,
     surfaceContentBgColor: resolvedTheme.contentBgColor,
     surfaceTitleBarColor: resolvedTheme.titleBarColor,
+    surfaceControlStyle: resolvedTheme.controlStyle,
     textDefaultColor: HUD_TEXT_DEFAULT_COLOR,
   });
 

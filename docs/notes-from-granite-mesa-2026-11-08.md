@@ -26,3 +26,8 @@ libraries where needed instead of working around them, and leave notes like thes
 - **`win.userPlaced`** (`src/hud-click-runtime.js`, `src/hud-drag-reset-runtime.js`): set when a person drags a window; saved
   with the layout. Applications that lay out windows should leave those alone (Conduit and Loom now do). Tests:
   `tests/hud-window-anchor.test.mjs`.
+
+`theme: "business"` (`src/hud-surface-style.js`, at the owner's request): quiet slate panels, neutral outlines, one blue accent, near-white
+titles. A new optional theme field, `controlStyle: "quiet"`, gives close, minimize and scrollbar controls neutral colours and the hotbar a
+smaller corner (`src/hud-window-objects-runtime.js`); themes without it are unchanged. A window that sets its own colours still overrides
+the theme, so Conduit and Loom stopped setting theirs. Tested: `tests/hud-theme-business.test.mjs`.
