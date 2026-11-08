@@ -41,11 +41,14 @@ test("a fresh machine starts low and stops before a bad tier", () => {
   quality.tick(0.2);
   for (let i = 0; i < 30; i += 1) quality.tick(1 / 60);
   assert.equal(quality.pixelRatio, 0.75);
+  assert.equal(quality.phase, "warmup");
 
   const saved = JSON.parse(storage.raw.get("halo.graphics.v1"));
   assert.equal(saved.good, 0);
   assert.equal(saved.tried, 1);
 
+  quality.tick(0.2);
+  assert.equal(quality.phase, "sample");
   quality.tick(0.12);
   assert.equal(quality.pixelRatio, 0.5);
   assert.equal(quality.phase, "settled");
@@ -53,6 +56,57 @@ test("a fresh machine starts low and stops before a bad tier", () => {
   assert.equal(after.tried, null);
   assert.equal(after.ceiling, 1);
   assert.equal(after.good, 0);
+  quality.dispose();
+});
+
+test("a hitch while a new tier warms up does not reject that tier", () => {
+  const quality = createQualityCalibration({
+    devicePixelRatio: 2,
+    cap: 2,
+    storage: memoryStorage(),
+    sampleSeconds: 0.5,
+    warmupSeconds: 0.2,
+    targetFps: 50,
+    badFrameMs: 90,
+    renderer: { setPixelRatio() {} },
+  });
+  quality.start();
+  quality.tick(0.2);
+  for (let i = 0; i < 30; i += 1) quality.tick(1 / 60);
+  assert.equal(quality.pixelRatio, 0.75);
+  quality.tick(0.2);
+  assert.equal(quality.pixelRatio, 0.75);
+  assert.notEqual(quality.phase, "settled");
+  for (let i = 0; i < 30; i += 1) quality.tick(1 / 60);
+  assert.equal(quality.pixelRatio, 1);
+  quality.dispose();
+});
+
+test("settle keeps the last accepted tier and stops the climb", () => {
+  const storage = memoryStorage();
+  const quality = createQualityCalibration({
+    devicePixelRatio: 2,
+    cap: 2,
+    storage,
+    sampleSeconds: 0.5,
+    warmupSeconds: 0.2,
+    targetFps: 50,
+    renderer: { setPixelRatio() {} },
+  });
+  quality.start();
+  quality.tick(0.2);
+  for (let i = 0; i < 30; i += 1) quality.tick(1 / 60);
+  assert.equal(quality.pixelRatio, 0.75);
+  assert.equal(quality.phase, "warmup");
+  quality.settle();
+  assert.equal(quality.pixelRatio, 0.5);
+  assert.equal(quality.phase, "settled");
+  const saved = JSON.parse(storage.raw.get("halo.graphics.v1"));
+  assert.equal(saved.good, 0);
+  assert.equal(saved.tried, null);
+  quality.settle();
+  assert.equal(quality.pixelRatio, 0.5);
+  assert.equal(quality.phase, "settled");
   quality.dispose();
 });
 

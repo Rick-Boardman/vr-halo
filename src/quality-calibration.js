@@ -195,7 +195,10 @@ export function createQualityCalibration({
     record.tried = next;
     save();
     index = next;
-    phase = "sample";
+    // Warm the new tier before counting frames. The first frames after a
+    // pixel-ratio change or a shadow-map allocation are a hitch, and that
+    // hitch used to fail an otherwise healthy tier.
+    phase = "warmup";
     resetSample();
     apply("raise");
   }
@@ -280,7 +283,7 @@ export function createQualityCalibration({
     record.manual = target;
     save();
     index = target;
-    phase = "sample";
+    phase = "warmup";
     resetSample();
     apply("manual");
   }
@@ -315,6 +318,18 @@ export function createQualityCalibration({
     save();
     emitAudio();
     refreshPanel();
+  }
+
+  function settle() {
+    if (phase === "settled") return;
+    if (record.tried != null) {
+      index = clampIndex(record.good, tiers.length);
+      record.tried = null;
+    }
+    record.good = index;
+    phase = "settled";
+    save();
+    apply("settle");
   }
 
   function start() {
@@ -405,6 +420,7 @@ export function createQualityCalibration({
       };
     },
     recalibrate,
+    settle,
     lockTier,
     setAuto,
     setVolume,
