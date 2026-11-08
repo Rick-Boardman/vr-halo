@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import { HUD_WINDOW_RESIZE_HANDLE_SIZE_PX } from "./hud-layout-policy.js";
+import {
+  HUD_OVERLAY_PADDING_PX,
+  HUD_WINDOW_RESIZE_HANDLE_SIZE_PX,
+  HUD_WINDOW_TITLE_HEIGHT_PX,
+  HUD_XR_WINDOW_MIN_H_PX,
+  HUD_XR_WINDOW_MIN_W_PX,
+} from "./hud-layout-policy.js";
+import { HUD_TEXT_DEFAULT_COLOR } from "./hud-text-style.js";
+import { estimateTextWidthPx, HUD_TEXT_ESTIMATE_GAP_PX } from "./text-measurement.js";
 
 /**
  * Shared HUD window skinning: 9-slice frame overlays and title-bar textures.
@@ -567,7 +575,88 @@ export function applyHudWindowSkin({ THREE, hud }, windowKey, textures, cornerSi
 }
 
 /**
- * Skin every listed window. Unknown or not-yet-created keys are skipped.
+ * Enter VR and Exit VR share the `xr` window. Any app that skins its HUD
+ * gets that window in the same frame, even when the caller forgot the key.
+ *
+ * @param {Iterable<string>} windowKeys
+ * @param {object | null | undefined} hud
+ * @returns {string[]}
+ */
+export function xrWindowKeysForSkin(windowKeys, hud) {
+  const keys = [];
+  const seen = new Set();
+  for (const key of windowKeys ?? []) {
+    const name = String(key ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    keys.push(name);
+  }
+  const xrReady = hud?.ui?.windows?.xr && hud?.objects?.windows?.xr;
+  if (xrReady && !seen.has("xr")) keys.push("xr");
+  return keys;
+}
+
+/**
+ * A 9-slice corner hides itself when the window is shorter than two corners.
+ * Grow Enter VR / Exit VR so the frame and the action label both fit.
+ *
+ * @param {object | null | undefined} win
+ * @param {number} [cornerSize]
+ * @returns {boolean} True when the window size changed.
+ */
+export function ensureXrWindowFitsSkin(win, cornerSize = HUD_NINE_SLICE_DEFAULT_CORNER_PX) {
+  if (!win) return false;
+  const corner = Number(cornerSize) > 0 ? Number(cornerSize) : HUD_NINE_SLICE_DEFAULT_CORNER_PX;
+  const minH = Math.max(HUD_XR_WINDOW_MIN_H_PX, corner * 2 + HUD_WINDOW_TITLE_HEIGHT_PX);
+  const minW = Math.max(HUD_XR_WINDOW_MIN_W_PX, corner * 2 + 160);
+  let changed = false;
+  if (!(win.minH >= minH)) { win.minH = minH; changed = true; }
+  if (!(win.h >= minH)) { win.h = minH; changed = true; }
+  if (!(win.minW >= minW)) { win.minW = minW; changed = true; }
+  if (!(win.w >= minW)) { win.w = minW; changed = true; }
+  return changed;
+}
+
+/**
+ * Place and color ENTER VR / EXIT VR inside a skinned frame.
+ * The label stays in the well between the corners.
+ *
+ * @param {object} win
+ * @param {object | null | undefined} objs
+ * @param {object | null | undefined} hud
+ * @param {string} label
+ * @param {number} labelDot
+ * @returns {{ x: number, y: number, maxWidth: number, color: number, outlineWidth: number, outlineColor: number, outlineOpacity: number, fontWeight: string | null }}
+ */
+export function xrActionLabelLayout(win, objs, hud, label, labelDot) {
+  const corner = getHudNineSliceCornerSize(objs, win, HUD_WINDOW_TITLE_HEIGHT_PX);
+  const pad = HUD_OVERLAY_PADDING_PX;
+  const inset = corner > 0 ? corner : 0;
+  const glyphH = 7 * labelDot;
+  const bodyTop = win.y + Math.max(HUD_WINDOW_TITLE_HEIGHT_PX, inset);
+  const bodyBottom = win.y + win.h - inset;
+  const y = bodyTop + Math.max(0, Math.floor((bodyBottom - bodyTop - glyphH) / 2));
+  const innerW = Math.max(0, win.w - inset * 2 - pad * 2);
+  const textW = label ? estimateTextWidthPx(label, labelDot, HUD_TEXT_ESTIMATE_GAP_PX) : 0;
+  const x = win.x + inset + pad + Math.max(0, Math.floor((innerW - Math.min(textW, innerW)) / 2));
+  const chrome = getHudStoneSkinChrome(hud);
+  const skinned = corner > 0;
+  return {
+    x,
+    y,
+    maxWidth: innerW,
+    color: skinned ? (chrome?.parchment ?? HUD_STONE_SKIN_CHROME.parchment) : HUD_TEXT_DEFAULT_COLOR,
+    outlineWidth: skinned ? 2 : 0,
+    outlineColor: chrome?.ink ?? HUD_STONE_SKIN_CHROME.ink,
+    outlineOpacity: skinned ? 0.9 : 0,
+    fontWeight: skinned ? "700" : null,
+  };
+}
+
+/**
+ * Skin every listed window, and the Enter VR / Exit VR window when it exists.
+ * Unknown or not-yet-created keys are skipped. A short `xr` window is grown
+ * so the 9-slice corners and the action label both fit.
  *
  * @param {object} ctx `{ THREE, hud }`
  * @param {Iterable<string>} windowKeys
@@ -576,8 +665,11 @@ export function applyHudWindowSkin({ THREE, hud }, windowKey, textures, cornerSi
  * @returns {string[]} Keys that received a skin.
  */
 export function applyHudWindowSkinToWindows(ctx, windowKeys, textures, cornerSize = HUD_NINE_SLICE_DEFAULT_CORNER_PX) {
+  const keys = xrWindowKeysForSkin(windowKeys, ctx?.hud);
+  const xrWin = ctx?.hud?.ui?.windows?.xr;
+  if (keys.includes("xr") && xrWin) ensureXrWindowFitsSkin(xrWin, cornerSize);
   const applied = [];
-  for (const key of windowKeys ?? []) {
+  for (const key of keys) {
     if (applyHudWindowSkin(ctx, key, textures, cornerSize)) applied.push(key);
   }
   applyHudStoneSharedChrome(ctx);

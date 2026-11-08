@@ -130,7 +130,10 @@ export function createHudWindowLayoutRuntime({
         } else {
           xrWin.x = Math.round(0.01 * W);
           xrWin.y = Math.round(0.02 * H);
-          xrWin.w = Math.round(Math.min(xrWin.w, 0.26 * W));
+          // Keep the stone-frame floor. A 26% cap on a narrow viewer used to
+          // squash Enter VR until the corners had nothing to draw around.
+          const frameW = Math.max(Number(xrWin.minW) || 0, Math.min(Number(xrWin.w) || 0, 0.26 * W));
+          xrWin.w = Math.round(frameW);
         }
       }
     }

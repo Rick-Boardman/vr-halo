@@ -22,7 +22,7 @@ import {
   HUD_PRIMARY_HIGHLIGHT_COLOR,
 } from "./hud-highlight-style.js";
 import { HUD_SURFACE_ACCENT_COLOR } from "./hud-surface-style.js";
-import { getHudStoneSkinChrome } from "./hud-window-skin-runtime.js";
+import { getHudStoneSkinChrome, xrActionLabelLayout } from "./hud-window-skin-runtime.js";
 import {
   HUD_STATUS_HEALTH_TINT_COLOR,
   HUD_STATUS_STAMINA_TINT_COLOR,
@@ -197,15 +197,20 @@ export function createHudWindowContentDispatchRuntime({
       const supported = !!hud.xr.supported;
       const presenting = !!renderer.xr.isPresenting;
       const label = supported ? (presenting ? "EXIT VR" : "ENTER VR") : "";
-      // Title bar shows "VR" (set via preset); render the action label in the
-      // content area so that title-bar clicks start a drag instead of toggling.
-      const contentY = win.y + HUD_WINDOW_TITLE_HEIGHT_PX + Math.max(0, Math.floor(((win.h - HUD_WINDOW_TITLE_HEIGHT_PX) - 7 * labelDot) / 2));
+      // Title stays "VR". The action sits in the content well so a title-bar
+      // click drags, and one skin covers ENTER VR and EXIT VR.
+      const placed = xrActionLabelLayout(win, objs, hud, label, labelDot);
       objs.contentText.setText({
         text: label,
-        x: win.x + pad,
-        y: contentY,
+        x: placed.x,
+        y: placed.y,
         dot: labelDot,
-        maxWidth: Math.max(0, win.w - pad * 2),
+        maxWidth: placed.maxWidth,
+        color: placed.color,
+        outlineWidth: placed.outlineWidth,
+        outlineColor: placed.outlineColor,
+        outlineOpacity: placed.outlineOpacity,
+        fontWeight: placed.fontWeight,
       });
       return true;
     }

@@ -91,8 +91,16 @@ The app should keep a short list of **game** window keys. Skip runtime chrome
 that is not a panel (`hotbar` is themed as a tray, not 9-sliced, unless you
 explicitly pass it).
 
-`applyWindowSkinToWindows` also turns on shared stone chrome (see below).
-`applyWindowSkin` skins one window only and does not by itself theme overlays.
+Enter VR and Exit VR are one HUD window, key `xr`. `applyWindowSkinToWindows`
+always skins that window when it exists, even when the caller's list leaves it
+out, and grows it so the 9-slice frame and the action label both fit. The title
+stays `VR`. The body reads `ENTER VR` before a session and `EXIT VR` while
+presenting. One skin covers both labels. Do not add a second page button for
+Exit VR, and do not mount `VRButton` as another control.
+
+`applyWindowSkin` skins the one window you pass. It does not add `xr` and it
+does not theme overlays. `applyWindowSkinToWindows` turns on shared stone
+chrome (see below).
 
 ---
 
@@ -112,6 +120,9 @@ For each skinned window:
 - Replaces min / close / action / resize glyphs with olive-gold plates.
 - Insets the resize handle inside the frame corner (not on the outer ornament).
 - Click, hover, and VR Troika anchors all use those same control rects.
+- The `xr` action label is centered in the well. Once the frame is tall enough
+  to draw, that label is parchment with an ink outline. Title-bar clicks still
+  drag. A click in the body enters or exits the session.
 
 Shared chrome (when `applyWindowSkinToWindows` runs):
 
@@ -169,7 +180,8 @@ overlay hover, and Troika VR anchors already consume the same rects.
    inset grip, tooltip color, scrollbar, hotbar.
 
 Working example: Ascent Protocol lists game window keys and delegates load/apply
-to Halo (`js/hud-nine-slice.js`).
+to Halo (`js/hud-nine-slice.js`). That list can omit `xr`. Halo still skins the
+VR window.
 
 ---
 

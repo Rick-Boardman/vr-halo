@@ -11,6 +11,13 @@
 export const HUD_WINDOW_TITLE_HEIGHT_PX = 28;
 
 /**
+ * Enter VR / Exit VR is a skinned panel. The frame corners are 40px, and the
+ * action label sits in the well between them. A shorter window hides the skin.
+ */
+export const HUD_XR_WINDOW_MIN_W_PX = 300;
+export const HUD_XR_WINDOW_MIN_H_PX = 136;
+
+/**
  * Purpose: Defines the canonical padding applied around HUD overlay content in pixel layout space.
  * Parameters: none.
  * Return value: Pixel padding value used by shared overlay layout code.

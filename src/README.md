@@ -155,6 +155,9 @@ hex integer.
 To 9-slice frames, title strips, and matching tooltip/scrollbar/hotbar chrome,
 see [`../HUD-WINDOW-SKINNING.md`](../HUD-WINDOW-SKINNING.md). Apps supply
 textures and window keys; Halo owns meshes, layout, and VR hit-testing.
+`applyWindowSkinToWindows` also skins the Enter VR / Exit VR window (`xr`)
+whenever that window exists, and grows it so the frame fits.
+`applyWindowSkin` does not.
 
 > Reserved window keys: `status` (built-in STATUS window) and the built-in
 > SYSTEM LOG window. Do not reuse the key `status`.
