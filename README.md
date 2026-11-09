@@ -54,7 +54,13 @@ npx playwright install chromium
 npm run test:browser
 npm run audit:release
 npm run pack:deliverable
+npm run gate
 ```
+
+`npm run gate` runs this working copy in place of the pinned Halo of every consumer
+folder beside the checkout (an `index.html` plus `@rb/halo` in its `package.json`), in
+headless Chromium, and fails on page errors, console errors or a Halo file that did not
+load. Run it before tagging a release; see `scripts/consumer-gate.mjs`.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 AI-assisted contributions use the same licensing, testing, and review standards.

@@ -29,7 +29,9 @@ Use Node.js 24 and npm 11. Run `npm ci`, `npm run build`,
 with `npx playwright install chromium`. Test the affected behavior in the
 included example. Changes to immersive input also need physical-device checks;
 report explicitly when a headset check has not been performed. Inspect
-`npm pack --dry-run` before changing package contents.
+`npm pack --dry-run` before changing package contents. Before a release tag, run
+`npm run gate`: it loads every consumer beside this checkout with this working copy
+in place of its pinned Halo and reports which would break when they move their pin.
 
 ## AI-assisted contributions
 
