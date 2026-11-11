@@ -13,24 +13,24 @@ function assertFrameContext({ renderer, scene, camera } = {}, helperName) {
 }
 
 /**
- * @param {{ renderer?: unknown, onFrame?: unknown, THREE?: { Clock?: new () => { getDelta(): number } } }} options
+ * @param {{ renderer?: unknown, onFrame?: unknown, THREE?: { Timer?: new () => { update(timestamp?: number): unknown, getDelta(): number } } }} options
  * @param {string} helperName
  */
 function assertAnimationLoopContext({ renderer, onFrame, THREE } = {}, helperName) {
   if (!renderer) throw new Error(`${helperName}: missing renderer`);
-  if (!THREE?.Clock) throw new Error(`${helperName}: missing THREE.Clock`);
+  if (!THREE?.Timer) throw new Error(`${helperName}: missing THREE.Timer (Three.js r179 or newer; Halo needs three 0.185.1)`);
   if (typeof onFrame !== "function") throw new Error(`${helperName}: missing onFrame callback`);
 }
 
 /**
- * Purpose: Start the canonical shared animation loop and feed each frame through a Three.Clock-derived delta before delegating to onFrame.
+ * Purpose: Start the canonical shared animation loop and feed each frame through a THREE.Timer delta before delegating to onFrame.
  * @param {object} [options] Animation-loop configuration.
  * @param {{ setAnimationLoop(callback: (timestamp?: number, frame?: unknown) => void): void }} [options.renderer] Renderer that owns the animation loop.
- * @param {{ Clock?: new () => { getDelta(): number } }} [options.THREE] Three.js namespace that provides Clock.
+ * @param {{ Timer?: new () => { update(timestamp?: number): unknown, getDelta(): number } }} [options.THREE] Three.js namespace that provides Timer. THREE.Clock is deprecated since r183 and warns when constructed.
  * @param {(payload: { dt: number, timestamp?: number, frame?: unknown }) => void} [options.onFrame] Per-frame callback invoked with the clamped delta, timestamp, and XR frame.
  * @param {number | null} [options.maxDelta=null] Optional upper bound for dt to avoid oversized frame deltas after pauses or tab throttling.
  * @returns {void} Does not return a value.
- * Side effects: installs a renderer animation loop callback and allocates a Three.Clock instance that is advanced on every rendered frame.
+ * Side effects: installs a renderer animation loop callback and allocates a THREE.Timer that is advanced with the loop's timestamp on every rendered frame. The timer is not connected to the document, so it adds no listeners.
  */
 export function startAnimationLoop({
   renderer,
@@ -40,9 +40,10 @@ export function startAnimationLoop({
 } = {}) {
   assertAnimationLoopContext({ renderer, onFrame, THREE }, "startAnimationLoop");
 
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
   renderer.setAnimationLoop((timestamp, frame) => {
-    const rawDelta = clock.getDelta();
+    timer.update(timestamp);
+    const rawDelta = timer.getDelta();
     const dt = maxDelta == null ? rawDelta : Math.min(maxDelta, rawDelta);
     onFrame({ dt, timestamp, frame });
   });
