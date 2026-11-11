@@ -111,6 +111,9 @@ runtime modules.
 - [ui/input-router.js](./ui/input-router.js) — shared UI input routing for pointer
   or XR controller event dispatch.
 - [ui/editor/index.js](./ui/editor/index.js) — the Troika-backed HUD text editor and WebXR system-keyboard bridge. See [`../SYSTEM-KEYBOARD.md`](../SYSTEM-KEYBOARD.md).
+- [input/index.js](./input/index.js) — device input normalization (keys, XR sticks
+  and buttons, VR hands, phone orientation) and `createInputMapping`. See
+  [Device input](#device-input).
 - [curve-surface.js](./curve-surface.js) — curve-sampled strip geometry and
   horizontal curve-normal helpers reused by road/track scene assembly.
 - [hud.js](./hud.js) — HUD namespace / compatibility surface.
@@ -331,6 +334,95 @@ geometry and canvas texture. Palette, presets, game modes, asset quality and
 persistence stay in the app. `examples/settings-window/` is a runnable page and
 `scripts/look-at-settings-window.mjs` drives it with mouse, keyboard and touch.
 
+## Device input
+
+`@rb/halo/input` (source: [input/](./input/)) turns devices into named axes and
+actions. It imports no Three.js. It was extracted from Garbage Can Race's input
+and phone-tilt code after that game's permission fix; the ride numbers below are
+that game's, shown as configuration.
+
+```js
+import { createInputMapping, createOrientationInput, handsAxes, stickFromSources } from "@rb/halo/input";
+
+const map = createInputMapping({
+  axes: {
+    steer: {
+      keys: { negative: ["A"], positive: ["D"] },
+      stick: { axis: "x", deadzone: 0.18 },
+      hands: { axis: "split", scale: 1 / 0.22, deadzone: 0.08 },
+      orientation: { axis: "roll", scale: 1 / 24, deadzone: 0.07 },
+    },
+    throttle: {
+      keys: { negative: ["S"], positive: ["W", "Shift"] },
+      stick: { axis: "y", invert: true, deadzone: 0.18 },
+      hands: { axis: "drop", offset: -0.32, scale: 1 / 0.28, deadzone: 0.06 },
+      orientation: { axis: "pitch", scale: 1 / 22, deadzone: 0.07 },
+    },
+  },
+  actions: { jump: { keys: [" ", "Space"], buttons: [4] } },
+  // Desktop: a held key beats a stray orientation event. On a phone, list
+  // "orientation" without yieldTo so tilt wins even while a key is down.
+  precedence: ["hands", { source: "orientation", yieldTo: ["keys"] }, "keys"],
+});
+
+const tilt = createOrientationInput({ win: window, status: { get: getLine, set: setLine } });
+tilt.bindGestures(window, { when: () => coarsePointer });
+
+// Each frame:
+const { axes, actions, source } = map.read({
+  keys: navigation.keysDown,
+  hands: presenting ? handsAxes({ leftY, rightY, headY }) : null,
+  stick: presenting ? stickFromSources(session.inputSources, "left", poseX, stickLocks) : null,
+  orientation: tilt.axes,
+  sources: session?.inputSources,
+});
+```
+
+- Devices: `keys` is the held-key Set (`navigation.keysDown`) or a record.
+  `stick` is `{ x, y }` raw from `stickFromSources` (WebXR: stick forward is
+  negative y; Quest sticks on axes 0,1 or 2,3 are found and locked per gamepad
+  in the `WeakMap` you keep). `hands` is `handsAxes()`: `split` (left hand
+  higher is positive) and `drop` (hands' midpoint below the head, metres).
+  `orientation` is `createOrientationInput().axes`: `roll` (right screen edge
+  down) and `pitch` (top tipped away), degrees, from the gravity vector in
+  screen axes, so landscape and past-upright holds do not flip.
+- Mapping: each axis is `((value + offset) * scale)`, negated by `invert`,
+  clamped to `[min, max]` (default ±1), then zero inside `deadzone`. Keys are
+  -1/0/+1 before that. One device supplies every axis in a frame: the first in
+  `precedence` that is present, skipping an entry while a device in its
+  `yieldTo` is active (non-zero). `source` says which, or `null`. Actions read
+  keys and gamepad buttons from every device. An unknown device, axis or
+  action field throws.
+- Calibration: `createOrientationInput({ calibrate })` takes the first reading
+  after `enable` or `resetNeutral()` as zero for the named axes; default pitch
+  only (level is level for roll).
+- Cleanup: `dispose()` removes the orientation and gesture listeners and the
+  quiet-sensor timer, and takes its own status note down. The mapping and the
+  other adapters hold no listeners.
+- What stays in the game: what an axis means (steer, acceleration, ejection,
+  on-foot rules), sensitivity numbers, response curves and when tilt is wanted.
+
+Device limits, each shown to the player through `status` and logged with the
+greppable prefix `[halo:orientation]` (override with `logPrefix`):
+
+- Permission is asked only from an activating gesture: `bindGestures` listens
+  to `touchend`, `click` and a non-mouse `pointerup`. iOS rejects
+  `DeviceOrientationEvent.requestPermission` from a touch `pointerdown`.
+- Over plain http (`isSecureContext` false) it never asks and says https is
+  needed. A browser without `DeviceOrientationEvent` is reported as unsupported.
+- A refused permission is shown and never asked again; the browser keeps that
+  answer until the player changes the site setting and reloads. A thrown
+  permission error (usually `NotAllowedError`) is shown and asked again only
+  on the next gesture, never by a timer.
+- Android Chrome needs no permission, but a sensor that sends nothing within
+  `quietMs` (2 s) is reported; a late reading takes that note down again. A
+  status line someone else wrote meanwhile is left alone.
+- Wording is `ORIENTATION_MESSAGES`, one or two lines each; pass `messages`
+  to name the game's fallback control.
+- Verified with simulated window, sensor and permission objects in
+  `tests/input.test.mjs`. Not verified here on a physical iPhone, Android phone
+  or Quest.
+
 ## World-object picking
 
 Use `wireSceneSelection(...)` instead of a custom raycaster. It unifies desktop
@@ -400,7 +492,8 @@ Implementation is isolated in [hud-debug.js](./hud-debug.js) and wired into
 
 From the shared library root:
 
-- `npm test` checks the system-keyboard bridge with simulated DOM/session objects.
+- `npm test` checks the system-keyboard bridge with simulated DOM/session objects,
+  and device input (`tests/input.test.mjs`) with a simulated window and sensor.
 - `npm run build` validates imports, package exports, and the unit tests.
 - `npm run test:browser` exercises the included WebGL chat and settings-window
   examples, then the path-camera mount on desktop and in simulated XR
