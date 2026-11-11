@@ -121,8 +121,12 @@ function fakeHud(Obj) {
     hudSystem: {
       hud: {
         pointer: { x: 0, y: 0, down: false, justPressed: false },
-        vrPointer: { x: 0, y: 0, down: false, justPressed: false },
-        ui: { windows: { settings: { x: 100, y: 50, w: 440, h: 520, collapsed: false } } },
+        vrPointer: { x: 0, y: 0, down: false, justPressed: false, active: false, windowKey: null },
+        ui: {
+          windows: { settings: { x: 100, y: 50, w: 440, h: 520, minH: 220, collapsed: false } },
+          order: ["settings"],
+          focus: "settings",
+        },
         objects: { windows: { settings: { bg, contentText, contentBg: { visible: true } } } },
       },
     },
@@ -188,17 +192,23 @@ function setup({ presenting = false, keyboard = null, extraRows = [] } = {}) {
     const item = panel.form.layout(win.w, win.h).find((entry) => entry.key === key);
     return { x: win.x + item.box.x + item.box.w / 2, y: win.y + item.box.y + item.box.h / 2, item };
   };
-  // One frame: a press at a window-relative point through the active pointer.
-  const click = (x, y) => {
-    const pointer = presenting ? hudSystem.hud.vrPointer : hudSystem.hud.pointer;
-    Object.assign(pointer, { x, y, down: true, justPressed: true });
+  const pointer = presenting ? hudSystem.hud.vrPointer : hudSystem.hud.pointer;
+  // The HUD update between prepare() and afterHud(): in XR it refreshes the
+  // ray (position, active, windowKey) the way hud-vr-pointer-runtime does.
+  const frame = (hudUpdate = null) => {
     panel.prepare();
-    panel.afterHud();
-    Object.assign(pointer, { down: false, justPressed: false });
-    panel.prepare();
+    hudUpdate?.(pointer);
     panel.afterHud();
   };
-  return { three, hudSystem, plane, calls, keyTarget, documentRef, panel, win, centre, click };
+  const rayHit = (x, y, key = "settings") => (p) => Object.assign(p, { x, y, active: true, windowKey: key });
+  // One frame pressing at (x, y), then one releasing.
+  const click = (x, y) => {
+    Object.assign(pointer, { x, y, down: true, justPressed: true });
+    frame(presenting ? rayHit(x, y) : null);
+    Object.assign(pointer, { down: false, justPressed: false });
+    frame(presenting ? rayHit(x, y) : null);
+  };
+  return { three, hudSystem, plane, calls, keyTarget, documentRef, panel, win, centre, click, frame, rayHit, pointer };
 }
 
 test("quality stops and tier helpers", () => {
@@ -351,7 +361,14 @@ test("XR: the controller ray hits controls and number entry uses the system keyb
   panel.afterHud();
   assert.equal(panel.isTyping(), false);
   Object.assign(hudSystem.hud.pointer, { down: false, justPressed: false });
-  Object.assign(hudSystem.hud.vrPointer, { x: win.x + item.box.x + 5, y: win.y + item.box.y + 5, down: true, justPressed: true });
+  Object.assign(hudSystem.hud.vrPointer, {
+    x: win.x + item.box.x + 5,
+    y: win.y + item.box.y + 5,
+    down: true,
+    justPressed: true,
+    active: true,
+    windowKey: "settings",
+  });
   panel.prepare();
   panel.afterHud();
   assert.equal(panel.isTyping(), true);
@@ -454,5 +471,111 @@ test("stock text lines written to the window are cleared before the HUD draws th
   assert.deepEqual(written, [["settings", []]]);
   t.panel.prepare();
   assert.equal(written.length, 1, "an empty window is not rewritten");
+  t.panel.dispose();
+});
+
+test("a window over the settings window takes the press; the settings window takes it when on top", () => {
+  const t = setup();
+  const { ui } = t.hudSystem.hud;
+  ui.windows.cover = { x: t.win.x, y: t.win.y, w: t.win.w, h: t.win.h, collapsed: false };
+  ui.order = ["settings", "cover"];
+  ui.focus = "cover";
+  const mute = t.centre("mute");
+  t.click(mute.x, mute.y);
+  assert.equal(t.calls.sound.muted, false, "the covered Mute is not toggled");
+  // Collapsed, the cover hits only on its title bar, so Mute is reachable.
+  ui.windows.cover.collapsed = true;
+  t.click(mute.x, mute.y);
+  assert.deepEqual(t.calls.log.at(-1), ["setMuted", true]);
+  ui.windows.cover.collapsed = false;
+  ui.order = ["cover", "settings"];
+  ui.focus = "settings";
+  t.click(mute.x, mute.y);
+  assert.deepEqual(t.calls.log.at(-1), ["setMuted", false], "on top, settings takes the press");
+  t.panel.dispose();
+});
+
+test("an open context menu takes the press; a press elsewhere closes the open list", () => {
+  const t = setup();
+  const mute = t.centre("mute");
+  t.hudSystem.hud.overlay = { contextMenu: { open: true } };
+  t.click(mute.x, mute.y);
+  assert.equal(t.calls.sound.muted, false);
+  t.hudSystem.hud.overlay.contextMenu.open = false;
+  const quality = t.centre("quality");
+  t.click(quality.x, quality.y);
+  assert.equal(t.panel.form.openKey, "quality");
+  t.click(t.win.x + t.win.w + 50, t.win.y + 10);
+  assert.equal(t.panel.form.openKey, "", "a press outside the window closes the list");
+  t.panel.dispose();
+});
+
+test("the window's minimum height keeps every control on it, and presses outside it are ignored", () => {
+  const t = setup();
+  t.win.h = 220;
+  t.panel.prepare();
+  t.panel.afterHud();
+  const items = t.panel.form.layout(t.win.w, t.win.h);
+  const last = items.at(-1);
+  assert.ok(t.win.minH >= last.box.y + last.box.h, "minH covers the last row");
+  assert.ok(t.win.h >= t.win.minH, "a short window grows to its minimum");
+  // The form itself clips: a row below the window height takes no press.
+  const form = createHudFormController({ rows: [{ kind: "button", key: "b", label: "B", onPress: () => assert.fail("clipped") }] });
+  const box = form.layout(300, 400)[0].box;
+  form.pointer({ x: box.x + 5, y: box.y + 5, down: true, pressed: true, width: 300, height: box.y + 2 });
+  // And the window ignores a press below its rectangle.
+  const mute = t.centre("mute");
+  t.click(mute.x, t.win.y + t.win.h + 4);
+  assert.equal(t.calls.sound.muted, false);
+  t.panel.dispose();
+});
+
+test("a slider being dragged keeps the pointer outside the window and over another window", () => {
+  const t = setup();
+  const { ui } = t.hudSystem.hud;
+  ui.windows.cover = { x: t.win.x + t.win.w, y: t.win.y, w: 300, h: 300, collapsed: false };
+  ui.order = ["settings", "cover"];
+  const volume = t.centre("volume");
+  const left = t.win.x + volume.item.box.x;
+  Object.assign(t.pointer, { x: left, y: volume.y, down: true, justPressed: true });
+  t.frame();
+  Object.assign(t.pointer, { x: t.win.x + t.win.w + 100, justPressed: false });
+  t.frame();
+  assert.deepEqual(t.calls.log.at(-1), ["setVolume", 1]);
+  Object.assign(t.pointer, { down: false });
+  t.frame();
+  Object.assign(t.pointer, { x: left, down: false });
+  t.frame();
+  assert.deepEqual(t.calls.log.at(-1), ["setVolume", 1], "released: moving no longer slides");
+  t.panel.dispose();
+});
+
+test("XR: a ray that misses or hits another window does not press, even with stale coordinates", () => {
+  const t = setup({ presenting: true });
+  const mute = t.centre("mute");
+  // hud-vr-pointer-runtime keeps x/y on a miss and sets active=false, windowKey=null.
+  Object.assign(t.pointer, { x: mute.x, y: mute.y, down: true, justPressed: true });
+  t.frame((p) => Object.assign(p, { active: false, windowKey: null }));
+  Object.assign(t.pointer, { down: false, justPressed: false });
+  t.frame((p) => Object.assign(p, { active: false, windowKey: null }));
+  assert.equal(t.calls.sound.muted, false, "a ray miss does not toggle Mute");
+  Object.assign(t.pointer, { down: true, justPressed: true });
+  t.frame(t.rayHit(mute.x, mute.y, "chat"));
+  Object.assign(t.pointer, { down: false, justPressed: false });
+  t.frame(t.rayHit(mute.x, mute.y, "chat"));
+  assert.equal(t.calls.sound.muted, false, "a ray on another window does not toggle Mute");
+  t.panel.dispose();
+});
+
+test("XR: the press lands where the refreshed ray points, not where it pointed before the HUD update", () => {
+  const t = setup({ presenting: true });
+  const mute = t.centre("mute");
+  const automatic = t.centre("automatic");
+  Object.assign(t.pointer, { x: mute.x, y: mute.y, down: true, justPressed: true, active: true, windowKey: "settings" });
+  t.frame(t.rayHit(automatic.x, automatic.y));
+  Object.assign(t.pointer, { down: false, justPressed: false });
+  t.frame(t.rayHit(automatic.x, automatic.y));
+  assert.equal(t.calls.sound.muted, false);
+  assert.deepEqual(t.calls.log.at(-1), ["lockTier", 2]);
   t.panel.dispose();
 });

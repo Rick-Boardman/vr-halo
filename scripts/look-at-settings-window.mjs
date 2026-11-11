@@ -167,6 +167,44 @@ try {
   step('typed 0.75 commits the nearest tier',
     !now.typing && tiers[now.index] === 0.75, JSON.stringify({ index: now.index, tiers }));
 
+  // A window raised over the settings window takes the press on the covered Mute.
+  const before = (await state(page)).muted;
+  await page.evaluate(() => {
+    const { hudSystem } = globalThis.__haloSettingsExample;
+    const win = hudSystem.hud.ui.windows.settings;
+    hudSystem.createWindow('review-cover', { title: 'Cover', x: win.x, y: win.y, w: win.w, h: win.h });
+    hudSystem.bringToFront('review-cover');
+  });
+  await frames(page);
+  const covered = await pointOf(page, 'mute');
+  await page.mouse.click(covered.x, covered.y);
+  await frames(page);
+  const coverFocus = await page.evaluate(() => globalThis.__haloSettingsExample.hudSystem.hud.ui.focus);
+  now = await state(page);
+  step('a window over the settings window takes the click', now.muted === before && coverFocus === 'review-cover',
+    JSON.stringify({ muted: now.muted, focus: coverFocus }));
+  await page.evaluate(() => globalThis.__haloSettingsExample.hudSystem.destroyWindow('review-cover'));
+  await frames(page);
+
+  // Shrunk to the stock minimum, the window grows back to fit its rows.
+  const fitted = await page.evaluate(() => {
+    const win = globalThis.__haloSettingsExample.hudSystem.hud.ui.windows.settings;
+    win.h = 220;
+    win.minH = 220;
+    return new Promise((resolve) => setTimeout(() => {
+      const items = globalThis.__haloSettingsWindow.form.layout(win.w, win.h);
+      const last = items[items.length - 1];
+      resolve({ h: win.h, minH: win.minH, bottom: last.box.y + last.box.h });
+    }, 150));
+  });
+  step('the minimum height keeps every row on the window',
+    fitted.minH >= fitted.bottom && fitted.h >= fitted.minH, JSON.stringify(fitted));
+  const reachable = await pointOf(page, 'mute');
+  await page.mouse.click(reachable.x, reachable.y);
+  await frames(page);
+  now = await state(page);
+  step('Mute is reachable after the shrink', now.muted === !before, JSON.stringify({ muted: now.muted }));
+
   step('nothing threw on the desktop page', thrown(errors).length === 0, thrown(errors).slice(0, 2).join(' | ') || 'clean');
   await page.evaluate(() => globalThis.__haloSettingsWindow.dispose());
   step('dispose removes the control plane', await page.evaluate(() => globalThis.__haloSettingsWindow.mesh === null));

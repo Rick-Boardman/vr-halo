@@ -214,8 +214,10 @@ rows of WebGL form controls on a 2D canvas: `status`, `dropdown`, `number`,
 `checkbox`, `slider` and `button`. Each row reads its value through a callback
 and reports changes through one (`onSelect`, `onCommit`, `onToggle`, `onInput`,
 `onPress`); it holds no Three.js objects or listeners. Coordinates are window
-pixels, origin top-left. `layoutFormRows`, `contains`, `sanitizeNumberText` and
-`DEFAULT_FORM_PALETTE` are exported beside it.
+pixels, origin top-left; a press outside the window's width and height is
+ignored. `contentHeight(width, extra)` is the height the rows need, and
+`slidingKey` names the slider holding a pressed pointer. `layoutFormRows`,
+`contains`, `sanitizeNumberText` and `DEFAULT_FORM_PALETTE` are exported beside it.
 
 `createHudSettingsWindow(...)` ([`hud-settings-window.js`](./hud-settings-window.js))
 paints those controls on the HUD `settings` window: Quality (Low/Medium/High
@@ -246,7 +248,15 @@ settings.afterHud();
 ```
 
 Desktop mouse and touch arrive through `hud.pointer`, the XR controller ray
-through `hud.vrPointer`. The number field takes desktop keys in capture phase
+through `hud.vrPointer`. `prepare()` keeps the press edge and `afterHud()` reads
+the position the HUD update just refreshed. A press reaches the controls only
+when the HUD gave it to this window: inside its visible rectangle, first in the
+HUD's window hit order (a window raised over it, or an open context menu, takes
+the press), and in XR on a ray with `vrPointer.active` hitting this window
+(`vrPointer.windowKey`). A slider being dragged keeps the pointer until release;
+a press elsewhere closes an open list and commits typing. The window raises its
+`minH` (and `h`) to the height its rows and notes need, so a resize cannot hide
+a control. The number field takes desktop keys in capture phase
 and, in a session that reports `isSystemKeyboardSupported`, opens the Quest
 system keyboard through `webxr-system-keyboard.js`. Pass
 `isTyping: () => settings.isTyping()` to the scene bootstrap so typing does not

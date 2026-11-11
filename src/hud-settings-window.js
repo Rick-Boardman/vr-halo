@@ -14,6 +14,15 @@
  * and release inside one frame, and the update clears `justPressed`), then
  * `afterHud()` after it. Desktop mouse and touch arrive through `hud.pointer`,
  * the XR controller ray through `hud.vrPointer`, both in layout pixels.
+ * `prepare()` keeps only the press edge; `afterHud()` reads the position after
+ * the HUD has refreshed its ray picking, and a press reaches the controls only
+ * when the HUD gave it to this window: inside the window's visible rectangle,
+ * this window first in the HUD's own hit order (a window over it, or an open
+ * context menu, takes the press), and in XR on a ray that hits this window
+ * (`vrPointer.active` and `vrPointer.windowKey`). A slider being dragged keeps
+ * the pointer until release, wherever it goes. A press the window does not
+ * own closes an open list and commits typing. The window's `minH` grows to the
+ * height the rows need, so resizing cannot hide a control.
  *
  * Render order: the control texture is a plane added to the HUD plane that
  * holds the window plate, copying the plate's transform rather than parenting
@@ -21,6 +30,7 @@
  * draws 20 above the plate with depth test off, like the rest of the HUD.
  */
 import { createHudFormController, sanitizeNumberText } from "./hud-form-controls.js";
+import { HUD_WINDOW_TITLE_HEIGHT_PX } from "./hud-layout-policy.js";
 import { createWebXrSystemKeyboardBridge } from "./webxr-system-keyboard.js";
 
 const HIDDEN_Y = -1000;
@@ -231,7 +241,7 @@ export function createHudSettingsWindow({
   let canvas = null;
   let signature = "";
   let prevDown = false;
-  let sample = { x: NaN, y: NaN, down: false, pressed: false };
+  let sample = { pressed: false, menuOpen: false };
   let disposed = false;
 
   const onKeyDown = (event) => {
@@ -259,17 +269,62 @@ export function createHudSettingsWindow({
       win.contentBgOpacity = 0;
       clearStockLines(win);
     }
+    if (win) fitHeight(win);
     const hud = root();
-    const presenting = renderer?.xr?.isPresenting === true;
-    const pointer = presenting ? hud?.vrPointer : hud?.pointer;
+    const pointer = activePointer(hud);
     const down = !!pointer?.down;
     sample = {
-      x: Number(pointer?.x),
-      y: Number(pointer?.y),
-      down,
       pressed: !!pointer?.justPressed || (down && !prevDown),
+      // The HUD's update gives a press to an open context menu before any window.
+      menuOpen: !!hud?.overlay?.contextMenu?.open,
     };
     prevDown = down;
+  }
+
+  function activePointer(hud) {
+    return renderer?.xr?.isPresenting === true ? hud?.vrPointer : hud?.pointer;
+  }
+
+  // The rows' height (and the notes under them) is the window's minimum, so
+  // the HUD's resize clamp keeps every control on the window.
+  function fitHeight(win) {
+    const lines = noteLines();
+    const extra = lines.length ? 22 + (lines.length - 1) * 20 + 10 : 0;
+    const need = form.contentHeight(win.w, extra);
+    if (!Number.isFinite(need)) return;
+    if (!(Number(win.minH) >= need)) win.minH = need;
+    if (!win.collapsed && !(Number(win.h) >= need)) win.h = need;
+  }
+
+  // The HUD's window hit order (hud-click-runtime getWindowHitTestOrder):
+  // windows being dragged or resized, then the focused window, then the rest
+  // from the top of the stack down. Collapsed windows hit on their title bar.
+  function topWindowAt(hud, x, y) {
+    const windows = hud?.ui?.windows ?? {};
+    const order = Array.isArray(hud?.ui?.order) ? hud.ui.order : [];
+    const keys = [];
+    for (let i = order.length - 1; i >= 0; i -= 1) {
+      if (windows[order[i]]?.dragging || windows[order[i]]?.resizing) keys.push(order[i]);
+    }
+    if (hud?.ui?.focus) keys.push(hud.ui.focus);
+    for (let i = order.length - 1; i >= 0; i -= 1) keys.push(order[i]);
+    for (const key of keys) {
+      const w = windows[key];
+      if (!w) continue;
+      const h = w.collapsed ? HUD_WINDOW_TITLE_HEIGHT_PX : w.h;
+      if (x >= w.x && y >= w.y && x < w.x + w.w && y < w.y + h) return key;
+    }
+    return null;
+  }
+
+  /** Whether the HUD gave the pointer at (x, y) to this window this frame. */
+  function owns(hud, win, pointer, x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    if (x < win.x || y < win.y || x >= win.x + win.w || y >= win.y + win.h) return false;
+    if (renderer?.xr?.isPresenting === true && (pointer?.active !== true || pointer?.windowKey !== windowKey)) {
+      return false;
+    }
+    return topWindowAt(hud, x, y) === windowKey;
   }
 
   /** After the HUD update: hide the stock content, route the pointer, paint. */
@@ -281,16 +336,25 @@ export function createHudSettingsWindow({
     ensureMesh(win);
     if (!shown(win)) form.reset();
     else {
+      // Read the pointer now: in XR the HUD update has just refreshed the ray.
+      const hud = root();
+      const pointer = activePointer(hud);
+      const x = Number(pointer?.x);
+      const y = Number(pointer?.y);
+      const down = !!pointer?.down;
+      const mine = !sample.menuOpen && owns(hud, win, pointer, x, y);
+      if (sample.pressed && !mine) form.reset();
+      const tracking = mine || (!!form.slidingKey && down);
       form.pointer({
-        x: sample.x - win.x,
-        y: sample.y - win.y,
-        down: sample.down,
-        pressed: sample.pressed,
+        x: tracking ? x - win.x : NaN,
+        y: tracking ? y - win.y : NaN,
+        down,
+        pressed: sample.pressed && mine,
         width: win.w,
         height: win.h,
       });
     }
-    sample = { ...sample, pressed: false };
+    sample = { pressed: false, menuOpen: false };
     paint(win);
   }
 

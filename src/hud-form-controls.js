@@ -269,7 +269,10 @@ export function createHudFormController({ rows, palette = {}, metrics = {}, keyb
       if (item) slideTo(item, px);
     }
     if (!down) slideKey = "";
-    if (pressed && Number.isFinite(px) && Number.isFinite(py)) press(items, px, py);
+    // A press only lands inside the window's visible area; rows a short window
+    // clips off its bottom take no input.
+    const inside = Number.isFinite(px) && Number.isFinite(py) && px >= 0 && py >= 0 && px < width && py < height;
+    if (pressed && inside) press(items, px, py);
     const nextHover = (down || openKey) && Number.isFinite(px) && Number.isFinite(py) ? hitKey(items, px, py) : "";
     if (nextHover !== hoverKey) {
       hoverKey = nextHover;
@@ -315,6 +318,18 @@ export function createHudFormController({ rows, palette = {}, metrics = {}, keyb
     if (clean === draft) return;
     draft = clean;
     dirty += 1;
+  }
+
+  /**
+   * The window height every row needs: the bottom of the last row plus the pad.
+   * @param {number} width
+   * @param {number} [extra=0] Height the caller paints under the last row.
+   */
+  function contentHeight(width, extra = 0) {
+    const items = layout(width, Number.MAX_SAFE_INTEGER);
+    const last = items[items.length - 1];
+    const bottom = last ? last.box.y + last.box.h : sizes.top;
+    return Math.ceil(bottom + Math.max(0, Number(extra) || 0) + sizes.pad);
   }
 
   function blinkOn() {
@@ -456,6 +471,7 @@ export function createHudFormController({ rows, palette = {}, metrics = {}, keyb
   return {
     rows,
     layout,
+    contentHeight,
     pointer,
     reset,
     handleKey,
@@ -478,6 +494,10 @@ export function createHudFormController({ rows, palette = {}, metrics = {}, keyb
     },
     get hoverKey() {
       return hoverKey;
+    },
+    /** The slider holding the pointer while it is down, or "". */
+    get slidingKey() {
+      return slideKey;
     },
     isTyping: () => !!focusKey,
   };
