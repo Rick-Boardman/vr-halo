@@ -83,7 +83,7 @@ const panel = createHudChatPanel({
 // Exposed so the headless check can drive the panel the way a person would —
 // and so a human poking at the console can too.
 globalThis.__haloChatPanel = panel;
-globalThis.__haloChatExample = { hudSystem, navigation, rig, look };
+globalThis.__haloChatExample = { hudSystem, navigation, rig, look, renderer, camera };
 
 hudSystem.ensureSharedWindow("help");
 hudSystem.toggleHelp();
