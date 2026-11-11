@@ -216,6 +216,56 @@ assigns `customDepthMaterial`, which troika 0.49.0's text mesh defines as a gett
 Troika 0.52.4 has the setter. Lattice's runtime ran on 0.185.1 inside conduit, game-civ,
 helix, loom, chorus and insight; Lattice's own build and tests on 0.185.1 were not run here.
 
+### Repeatable migrated-consumer gate
+
+On November 11 the consumers' installed import maps had moved to local modules.
+The default `npm run gate` then passed 11/12 consumers; garbage-can-race still
+failed on `Invalid instanceId 0`. This remains a failing default gate until the
+consumer's own migration ships. No errors are suppressed by the candidate probe.
+
+The complete candidate run is `npm run gate -- --overlay .scratchpad/candidates`:
+12/12 passed on Three.js 0.185.1 in headless Chromium with SwiftShader. This tests
+the documented migration, not the readiness of unmodified consumers. The overlay
+contains only a disposable copy of garbage-can-race's `src/props.js`, with the
+`addInstance` migration below. The actual game fix belongs in its consumer ticket;
+Halo ships only generic fixture serving. The other eleven consumers use their
+installed local Three.js/Troika import maps with Halo's candidate Three.js served
+by the gate. CDN configurations must first migrate their import maps as described
+above; the gate does not replace CDN requests.
+
+To reproduce, save this preparation script as `.scratchpad/prepare-candidates.ps1`
+and run it from the Halo checkout using
+`pwsh -NoProfile -File .scratchpad/prepare-candidates.ps1`. It requires the sibling
+consumer checkout at `bd4e0e9` (or the same batching statement) and installed
+consumer dependencies. It fails if the expected source has changed. Use a fresh
+overlay directory: every file in it must be requested during the gate.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$source = (Resolve-Path ../garbage-can-race/src/props.js).Path
+$original = [IO.File]::ReadAllText($source)
+$before = 'const id = mesh.addGeometry(item.geometry);'
+$after = 'const id = mesh.addInstance(mesh.addGeometry(item.geometry));'
+if ($original.Split($before, [StringSplitOptions]::None).Length -ne 2) {
+    throw 'Expected exactly one pre-migration batching statement'
+}
+$directory = New-Item -ItemType Directory -Force .scratchpad/candidates/garbage-can-race/src
+[IO.File]::WriteAllText((Join-Path $directory.FullName 'props.js'), $original.Replace($before, $after))
+npm run gate -- --overlay .scratchpad/candidates
+if ($LASTEXITCODE -ne 0) { throw 'Migrated consumer gate failed' }
+```
+
+The gate prints SHA-256 fingerprints for both original and replacement bytes and
+labels the run `MIGRATED FIXTURES`. It rejects missing source files, overlays outside
+selected consumers, dependency overlays, empty overlays, and unused fixture files.
+It never writes consumer files. For this probe the original props hash was
+`a73b50356715a5f64db7712841fb860d3123d1e4531fcb7955c261e12180af5e`
+and the candidate hash was
+`42d66d86389aea9d76e77ce0669c0a2cce6015be6f7b7e71bf252e2931eae5b4`.
+The absent local game backend's `/api/play/guest` returned 404, reported as a note
+under the existing gate policy. These browser smoke runs do not establish headset
+behavior, backend integration, or exhaustive gameplay correctness.
+
 ### Migration notes
 
 Each is the consumer's own change, made when it moves to Halo v0.3.0:
