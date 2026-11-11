@@ -14,6 +14,7 @@
     "./tiles": "./src/tiles/index.js",
     "./ui": "./src/ui/index.js",
     "./ui/editor": "./src/ui/editor/index.js",
+    "./input": "./src/input/index.js",
     "./curve-surface": "./src/curve-surface.js",
     "./xr": "./src/xr/index.js",
     "./package.json": "./package.json",

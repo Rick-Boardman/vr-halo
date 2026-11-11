@@ -31,6 +31,8 @@ HTTPS outside localhost and a compatible browser/device.
 - WebGL HUD windows, text, tooltips, skins, editors, form controls, a graphics and sound
   settings window, and application-fed chat panels.
 - World-object selection, XR controllers, frame timing, and cleanup helpers.
+- Device input: keys, XR sticks and buttons, VR hands and phone tilt mapped to
+  configurable axes and actions, with the motion-permission rules built in.
 - Optional system-keyboard integration when the immersive browser reports support.
 
 Applications own their world, game rules, data, network transports, and persistence.
@@ -45,7 +47,7 @@ browser import maps, and a runnable example. Browser-native modules need an
 import map; bundlers resolve package imports normally. Keep one Three.js instance.
 
 The package entry point is `@rb/halo`; narrow exports include `/navigation`,
-`/tiles`, `/ui`, `/ui/editor`, `/xr`, and `/curve-surface`.
+`/tiles`, `/ui`, `/ui/editor`, `/xr`, `/input`, and `/curve-surface`.
 
 ## Develop and contribute
 

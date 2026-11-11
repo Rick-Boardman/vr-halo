@@ -186,9 +186,11 @@ were not built; 0.185.1 was chosen because Valley Line already runs on it.
   `THREE.Clock`, which is deprecated since r183 and warns when constructed. It now
   throws `missing THREE.Timer` when handed a Three.js older than r179. Callers already
   pass the whole `THREE` namespace; no call changes.
-- Nothing else in `src/` needed a change. `npm run build` (63 tests), `npm run
-  test:browser` (chat panel, settings window on desktop and touch) and `npm run
-  audit:release` pass on 0.185.1, and the chat-panel page logs no Three.js warning.
+- Nothing else in `src/` needed a change for the Three.js move. After path-camera
+  (v0.2.7) and device input (v0.2.8) merged, `npm run build` is 93 tests. `npm run
+  test:browser` covers the chat panel, the settings window on desktop and touch, and
+  the path camera on desktop and in simulated XR, and `npm run audit:release` passes
+  on 0.185.1. The chat-panel browser run records no console error.
 - 0.185's `build/three.module.js` imports `./three.core.js`, so a host that serves or
   copies only `three.module.js` breaks; serve the whole `build/` directory.
 
