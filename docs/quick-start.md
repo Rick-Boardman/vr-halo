@@ -55,7 +55,8 @@ npm run audit:release
 ```
 
 The browser check creates an actual WebGL context and saves a screenshot under
-`dist/shots/`. Headless software rendering does not prove headset behavior.
+`dist/shots/`. Its simulated-XR step forces `renderer.xr.isPresenting` with no XR
+session or controllers. Headless software rendering does not prove headset behavior.
 Check physical-device input, text entry, and XR presentation on the devices you
 support. Immersive WebXR requires a secure context and compatible hardware.
 
