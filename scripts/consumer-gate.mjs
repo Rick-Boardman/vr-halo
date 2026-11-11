@@ -4,6 +4,7 @@
 //   npm run gate -- --only chorus,demo # some of them
 //   npm run gate -- --root E:\apps     # consumers live somewhere else
 //   npm run gate -- --overlay .scratchpad/candidates # isolated migrated files
+//   npm run gate -- --only gravacrest --enter "gravacrest=#solo" # try an entry flow before committing it
 //
 // Consumers pin a Halo tag (github:Rick-Boardman/vr-halo#vX.Y.Z) and load it from their own
 // node_modules through an import map, so a Halo release can break nobody until a consumer moves
@@ -11,7 +12,10 @@
 // serves disposable origin/main snapshots with fresh locked installs, and answers every request for
 // <consumer>/node_modules/@rb/halo/<path> from THIS checkout, so each consumer runs the candidate
 // in place of its pinned tag. A consumer is a folder with an index.html and @rb/halo in its
-// package.json dependencies. For each, headless Chromium loads the page, waits for a canvas,
+// package.json dependencies. For each, headless Chromium loads the page, clicks the consumer's
+// declared entry flow (package.json "haloGate": { "enter": [css selectors] }, for a page whose
+// first screen is a menu over a hidden canvas; --enter name=selector, repeatable, replaces it
+// for that run), waits for a visible canvas,
 // clicks it and presses a few keys (the HUD's input path), and the consumer fails on any page
 // error, console error, or Halo file that did not answer 200 (a consumer that never asked for a
 // Halo file did not run the candidate and fails too). Other failed requests, such as a consumer
@@ -44,6 +48,14 @@ const sourceRoot = resolve(flag('root', resolve(halo, '..')));
 const only = (flag('only', '') || '').split(',').map((x) => x.trim()).filter(Boolean);
 const ownThree = args.includes('--own-three');
 const overlay = flag('overlay', null);
+// --enter name=selector, repeatable and in order, replaces that consumer's declared entry flow.
+const entryOverrides = new Map();
+args.forEach((arg, i) => {
+  if (arg !== '--enter') return;
+  const match = /^([^=]+)=(.+)$/.exec(args[i + 1] || '');
+  if (!match || !match[2].trim()) throw new Error('consumer gate: --enter requires <consumer>=<css selector>');
+  entryOverrides.set(match[1], [...(entryOverrides.get(match[1]) || []), match[2]]);
+});
 if (args.includes('--overlay') && (!overlay || overlay.startsWith('--'))) {
   throw new Error('consumer gate: --overlay requires a directory');
 }
@@ -72,8 +84,13 @@ const threeVersion = ownThree ? null : JSON.parse(await readFile(join(threeRoot,
 const snapshot = await prepareConsumers(sourceRoot, join(halo, '.scratchpad'), only);
 const { root, consumers } = snapshot;
 let browser;
+const unknownEntries = [...entryOverrides.keys()].filter((name) => !consumers.some((consumer) => consumer.name === name));
 let server;
 try {
+if (unknownEntries.length) throw new Error(`consumer gate: --enter names an unselected consumer: ${unknownEntries.join(', ')}`);
+for (const consumer of consumers) {
+  if (entryOverrides.has(consumer.name)) consumer.enter = entryOverrides.get(consumer.name);
+}
 for (const [pathname, fixture] of overrides) {
   if (!consumers.some(({ name }) => pathname.startsWith(`/${name}/`)) || pathname.includes('/node_modules/')) {
     throw new Error(`consumer gate: overlay must target a selected consumer source file: ${pathname}`);
@@ -143,7 +160,25 @@ for (const consumer of consumers) {
   });
   try {
     await page.goto(`${origin}/${consumer.name}/`, { waitUntil: 'load', timeout: 30000 });
-    const canvas = await page.waitForSelector('canvas', { timeout: 20000 });
+    // 'load' does not wait for a module's dynamic import(), so a menu can be on screen
+    // before its handlers are attached. Let the module graph settle before the first click.
+    if (consumer.enter.length) {
+      await page.waitForLoadState('networkidle', { timeout: 30000 }).catch((error) => {
+        throw new Error(`entry: the page did not settle before its entry flow: ${String(error.message || error).split('\n')[0]}`);
+      });
+    }
+    for (const selector of consumer.enter) {
+      // click() waits for the control to be visible, enabled and stable.
+      await page.click(selector, { timeout: 20000 }).catch((error) => {
+        throw new Error(`entry ${selector}: ${String(error.message || error).split('\n')[0]}`);
+      });
+    }
+    const canvas = await page.waitForSelector('canvas', { timeout: 20000 }).catch(async (error) => {
+      if (!consumer.enter.length && await page.$('canvas')) {
+        throw new Error('its canvas stayed hidden; declare the entry flow as package.json "haloGate": { "enter": ["<css selector>"] }');
+      }
+      throw error;
+    });
     await page.waitForTimeout(2500);
     const box = await canvas.boundingBox();
     if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -155,7 +190,7 @@ for (const consumer of consumers) {
   }
   if (problems.length) failed += 1;
   const lines = [...problems.slice(0, 8), ...notes.slice(0, 4).map((n) => `(note) ${n}`)];
-  console.log(`${problems.length ? 'FAIL' : 'ok  '} ${consumer.name} (pins ${consumer.pin}; ${haloFiles} Halo files${ownThree ? '' : `, ${threeFiles} three files`} from this checkout)${lines.length ? '\n     ' + lines.join('\n     ') : ''}`);
+  console.log(`${problems.length ? 'FAIL' : 'ok  '} ${consumer.name} (pins ${consumer.pin}; ${consumer.enter.length ? `entry ${consumer.enter.join(' > ')}; ` : ''}${haloFiles} Halo files${ownThree ? '' : `, ${threeFiles} three files`} from this checkout)${lines.length ? '\n     ' + lines.join('\n     ') : ''}`);
   await page.close();
 }
 let unused = 0;

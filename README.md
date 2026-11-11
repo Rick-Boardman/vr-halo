@@ -71,6 +71,12 @@ if needed. Missing lockfiles and failed installs fail the gate; temporary clones
 removed on success or failure. `--only name,name` selects consumers and rejects unknown
 names; `--root <directory>` changes the discovery directory.
 It fails on page errors, console errors or a Halo file that did not load.
+A consumer whose first screen is a menu over a hidden canvas declares how to reach the
+scene in its own `package.json`, `"haloGate": { "enter": ["#solo"] }`: CSS selectors the gate
+clicks in order, once the page's network is idle, before it waits for a visible canvas.
+A hidden canvas with no declared entry fails with that instruction instead of a timeout.
+`--enter name=selector` (repeatable, in order) replaces a consumer's entry flow for one run,
+to try it before the consumer commits it.
 It also serves this checkout's `three` (the exact peer) to each consumer's
 `node_modules/three`, since moving the Halo pin moves `three` too; `--own-three` keeps each
 consumer's freshly installed locked copy. Run it before tagging a release; see `scripts/consumer-gate.mjs`.

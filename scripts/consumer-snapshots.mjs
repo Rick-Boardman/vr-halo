@@ -29,6 +29,7 @@ export async function prepareConsumers(sourceRoot, scratch, only = [], install =
       pkg = JSON.parse(git(source, 'show', `${commit}:package.json`));
       const pin = pkg.dependencies?.['@rb/halo'] || pkg.devDependencies?.['@rb/halo'];
       if (!pin) continue;
+      const enter = gateEntry(pkg, entry.name);
       const folder = join(root, entry.name);
       console.log(`consumer gate: preparing ${entry.name} origin/main ${commit}`);
       git(sourceRoot, 'clone', '--no-hardlinks', '--no-checkout', '--', source, folder);
@@ -36,7 +37,7 @@ export async function prepareConsumers(sourceRoot, scratch, only = [], install =
       // npm ci must fail on absent/stale locks instead of using a live install.
       await readFile(join(folder, 'package-lock.json'));
       await install(folder);
-      consumers.push({ name: entry.name, folder, pin, commit });
+      consumers.push({ name: entry.name, folder, pin, commit, enter });
     }
     const missing = only.filter((name) => !consumers.some((consumer) => consumer.name === name));
     if (missing.length) throw new Error(`consumer gate: selected consumers not found: ${missing.join(', ')}`);
@@ -46,6 +47,20 @@ export async function prepareConsumers(sourceRoot, scratch, only = [], install =
     await dispose();
     throw error;
   }
+}
+
+// A consumer whose first screen hides its canvas behind a menu declares how to reach it:
+//   "haloGate": { "enter": ["#solo"] }
+// CSS selectors the gate clicks in order after load, before it waits for a visible canvas.
+// The consumer owns its page, so the entry flow lives in its committed package.json.
+export function gateEntry(pkg, name) {
+  const gate = pkg.haloGate;
+  if (gate === undefined) return [];
+  const enter = gate?.enter;
+  if (typeof gate !== 'object' || Array.isArray(gate) || !Array.isArray(enter) || !enter.every((s) => typeof s === 'string' && s.trim())) {
+    throw new Error(`consumer gate: ${name} package.json haloGate must be { "enter": ["<css selector>", ...] }`);
+  }
+  return enter;
 }
 
 function installDependencies(folder) {

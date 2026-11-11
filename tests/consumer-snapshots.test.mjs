@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { prepareConsumers } from '../scripts/consumer-snapshots.mjs';
+import { gateEntry, prepareConsumers } from '../scripts/consumer-snapshots.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
@@ -45,6 +45,7 @@ test('consumer snapshots ignore another branch, dirty sources and missing live d
     snapshot = await prepareConsumers(sourceRoot, join(fixture, 'runs'));
     assert.equal(snapshot.consumers.length, 1);
     assert.equal(snapshot.consumers[0].commit, commit);
+    assert.deepEqual(snapshot.consumers[0].enter, []);
     const folder = snapshot.consumers[0].folder;
     assert.equal(await readFile(join(folder, 'index.html'), 'utf8'), '<canvas></canvas>');
     assert.equal(await readFile(join(folder, 'node_modules', '@rb', 'halo', 'core.js'), 'utf8'), 'export const baseline = true;');
@@ -67,5 +68,13 @@ test('consumer snapshots ignore another branch, dirty sources and missing live d
   } finally {
     await snapshot?.dispose();
     await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test('a consumer declares the entry flow that reveals its canvas', () => {
+  assert.deepEqual(gateEntry({}, 'game'), []);
+  assert.deepEqual(gateEntry({ haloGate: { enter: ['#solo', 'button.go'] } }, 'game'), ['#solo', 'button.go']);
+  for (const haloGate of [null, [], 'x', {}, { enter: '#solo' }, { enter: [''] }, { enter: [' '] }, { enter: [3] }]) {
+    assert.throws(() => gateEntry({ haloGate }, 'game'), /game package.json haloGate must be/);
   }
 });
