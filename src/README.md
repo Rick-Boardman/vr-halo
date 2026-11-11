@@ -149,8 +149,10 @@ hudSystem.setWindowLines(
 `bringToFront(key)`, `isClientPointOverUi(clientX, clientY)`,
 `handleResize()`, `loadWindowSkinTextures(basePath)`,
 `applyWindowSkin(key, textures, opts)`, and
-`applyWindowSkinToWindows(keys, textures, opts)`. Entry `color` is a packed
-hex integer.
+`applyWindowSkinToWindows(keys, textures, opts)`, and the read-only
+`getVrYawPerScreen()`, `getVrPitchPerScreen()` (angular size of the VR surface,
+radians) and `getDragWindowKey()` (window being dragged, or `null`). Entry `color`
+is a packed hex integer.
 
 To 9-slice frames, title strips, and matching tooltip/scrollbar/hotbar chrome,
 see [`../HUD-WINDOW-SKINNING.md`](../HUD-WINDOW-SKINNING.md). Apps supply
@@ -161,6 +163,68 @@ whenever that window exists, and grows it so the frame fits.
 
 > Reserved window keys: `status` (built-in STATUS window) and the built-in
 > SYSTEM LOG window. Do not reuse the key `status`.
+
+### Path-locked camera (VR)
+
+Halo's VR placement keeps the HUD sphere still in the VR anchor's frame and lets
+the headset look around it. When the application locks the camera to a path (a
+road, a rail, a scripted track), the picture turns away from that sphere. Two
+optional helpers from `@rb/halo/hud` (source: [hud-path-camera.js](./hud-path-camera.js))
+turn the sphere with the look and hold windows beside it:
+
+```js
+import * as THREE from "three";
+import {
+  createHudPathCameraMount,
+  createHudPathCameraPanels,
+  HUD_PATH_CAMERA_SIDE_YAW_RAD,
+} from "@rb/halo/hud";
+
+const hudMount = createHudPathCameraMount({ THREE, renderer, hud: hudSystem.hud });
+const hudPanels = createHudPathCameraPanels({
+  hudSystem,
+  columns: [
+    { yaw: -HUD_PATH_CAMERA_SIDE_YAW_RAD, keys: ["race", "help"] },
+    { yaw: HUD_PATH_CAMERA_SIDE_YAW_RAD, keys: ["settings"], showKeys: ["xr"] },
+  ],
+});
+
+// Every frame, after the app has posed its rig for the path:
+if (hudMount.update({ yaw: lookYaw, pitch: lookPitch })) hudPanels.place();
+// On teardown:
+hudMount.dispose();
+```
+
+Coordinate contract:
+
+- The mount is a `Group` between Halo's VR anchor and `hud.root`:
+  anchor → mount (yaw about +Y, then pitch about +X, pivoting on
+  `hud.root.position`) → `hud.root`. `yaw`/`pitch` are radians in the anchor's
+  frame; positive yaw turns toward −X (Three.js right-hand rule), positive pitch up.
+- `hud.root.rotation` stays (0, 0, 0) and `hud.root.position` stays the head
+  point Halo captured, so layout pixels map to root-local sphere coordinates
+  exactly as without a mount, and saved layouts keep their meaning.
+- Picking reads `hud.root.matrixWorld`, which includes the mount. `update`
+  refreshes the mount's world matrix and its ancestors' so a ray cast in the same
+  frame matches what is drawn.
+- `update` acts only while `renderer.xr.isPresenting`. Otherwise it gives the
+  root back to its anchor and returns `false`; Halo then owns desktop placement
+  unchanged. `release()` does that on demand; `dispose()` also detaches the mount.
+- Panel columns are a yaw off the sphere centre, in layout pixels
+  `x = layoutW · (0.5 + yaw / getVrYawPerScreen())`, the inverse of the VR
+  pointer's mapping. In layout pixels +x is screen-right, so a positive column
+  `yaw` is to the right. `place({ pitch })` moves the stacks' vertical centre off
+  the sphere centre; pass `0` when the mount already aims at the look pitch.
+  Changed coordinates request a render on the next HUD update; unchanged
+  placement leaves the HUD clean.
+- A hidden window (Halo parks it at `y < -1000`) is never moved, so its restore
+  point survives; `showKeys` are placed even when parked (for Enter/Exit VR).
+  A window being dragged is left alone, and once dropped it keeps its spot
+  until `hudPanels.reset()`. Open windows no column names join the column with
+  the fewest windows unless `placeOthers: false`.
+
+Which windows go in which column, clearance for the road or track, and any
+preferred layout stay in the application.
 
 ### Chat panel
 
@@ -338,7 +402,9 @@ From the shared library root:
 
 - `npm test` checks the system-keyboard bridge with simulated DOM/session objects.
 - `npm run build` validates imports, package exports, and the unit tests.
-- `npm run test:browser` exercises the included WebGL chat and settings-window examples.
+- `npm run test:browser` exercises the included WebGL chat and settings-window
+  examples, then the path-camera mount on desktop and in simulated XR
+  (`scripts/look-at-path-camera.mjs`).
 - `npm run audit:release` checks the candidate files and local documentation links.
 
 Use a fresh-origin browser smoke check on the smallest affected harness whenever

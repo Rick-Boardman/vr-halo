@@ -170,6 +170,20 @@ export { renderHudFrame } from "./frame-loop.js";
 export { createSceneHudBootstrap } from "./scene-hud-bootstrap.js";
 
 /**
+ * Purpose: Re-export the optional path-locked-camera HUD mount and panel placement.
+ * Parameters: forwarded from ./hud-path-camera.js (coordinate contract documented there and in src/README.md).
+ * Return value: forwards the factories and default constants from the underlying module.
+ * Side effects: none in this barrel; side effects occur when callers invoke the factories.
+ */
+export {
+  createHudPathCameraMount,
+  createHudPathCameraPanels,
+  HUD_PATH_CAMERA_SIDE_YAW_RAD,
+  HUD_PATH_CAMERA_GAP_PX,
+  HUD_PATH_CAMERA_MIN_Y_PX,
+} from "./hud-path-camera.js";
+
+/**
  * Purpose: Create the canonical WebGL-native HUD system used by shared runtime harnesses for desktop and WebXR overlays, input capture, windows, and debug visuals.
  * @param {object} [options] HUD-system configuration.
  * @param {object} [options.THREE] Three.js namespace used to allocate meshes, geometries, materials, vectors, quaternions, matrices, and raycasters for the HUD scene graph.
@@ -1410,6 +1424,12 @@ export function createHudSystem(
       applyHudWindowSkin({ THREE, hud }, windowKey, textures, options.cornerSize),
     applyWindowSkinToWindows: (windowKeys, textures, options = {}) =>
       applyHudWindowSkinToWindows({ THREE, hud }, windowKeys, textures, options.cornerSize),
+    // Read-only geometry and drag state for placement helpers such as
+    // createHudPathCameraPanels: the angular size of the VR surface (radians)
+    // and the key of the window being dragged, or null.
+    getVrYawPerScreen: () => _vrYawPerScreen(),
+    getVrPitchPerScreen: () => _vrPitchPerScreen(),
+    getDragWindowKey: () => _dragState.getDragWindowKey(),
     isPointOverUi: (px, py) => _windowStateRuntime.isPointOverUi(px, py),
     isClientPointOverUi: (clientX, clientY) => _windowStateRuntime.isClientPointOverUi(clientX, clientY),
     enterVR,
