@@ -15,5 +15,5 @@ Apache license or public GitHub downloads. A future registry release is a
 separate distribution decision.
 
 Install as described in [docs/quick-start.md](docs/quick-start.md). The application
-provides Three.js 0.160.1 and Troika; use a single Three.js instance. Preserve
+provides Three.js 0.185.1 and Troika 0.52.4; use a single Three.js instance. Preserve
 LICENSE, NOTICE, and bundled-asset licenses when redistributing a delivery.

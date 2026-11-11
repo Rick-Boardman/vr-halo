@@ -63,7 +63,13 @@ npm run gate
 `npm run gate` runs this working copy in place of the pinned Halo of every consumer
 folder beside the checkout (an `index.html` plus `@rb/halo` in its `package.json`), in
 headless Chromium, and fails on page errors, console errors or a Halo file that did not
-load. Run it before tagging a release; see `scripts/consumer-gate.mjs`.
+load. It also serves this checkout's `three` (the exact peer) to each consumer's
+`node_modules/three`, since moving the Halo pin moves `three` too; `--own-three` keeps each
+consumer's installed copy. Run it before tagging a release; see `scripts/consumer-gate.mjs`.
+For a breaking peer upgrade, `--overlay <directory>` also tests isolated migrated
+consumer files without editing consumer checkouts. It prints file hashes and fails
+if an overlay file is not exercised. Keep the unmodified run as evidence too; see
+the [repeatable v0.3.0 migration probe](docs/runtime-contracts.md#repeatable-migrated-consumer-gate).
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 AI-assisted contributions use the same licensing, testing, and review standards.

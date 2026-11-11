@@ -56,6 +56,8 @@ That can enforce one module instance but does not prove renderer/API compatibili
 Before migration, a separate Halo compatibility task must establish a supported
 version using actual builds and browser checks for all affected consumers. A peer
 version bump, if needed, is a separate release; do not silently bundle another Three.js.
+That task has run: Halo v0.3.0 moves the peer to 0.185.1, recorded in
+[Three.js 0.185.1 peer (v0.3.0)](#threejs-01851-peer-v030).
 
 ### Duplication and extraction recommendations
 
@@ -149,3 +151,139 @@ they do not test these consumer migrations. Physical Quest, iPhone and Android
 testing and live Magna flow verification remain follow-up acceptance work. Expected
 cloud cost impact of this review is zero; follow-ups must reuse existing services
 and obtain approval before adding any recurring baseline charge.
+
+## Three.js 0.185.1 peer (v0.3.0)
+
+From v0.3.0 Halo's peer and devDependency are exactly `three` 0.185.1 (was 0.160.1);
+`troika-three-text` stays `^0.52.4`. The owner chose on 2026-11-11 (backlog ticket
+`2026-11-09-halo-valley-three-compatibility`) to raise the peer for every consumer
+rather than hold Valley Line at 0.160.1. This is a breaking release: a consumer moves
+its Halo pin and its `three` together. Evidence below is from builds and headless
+Chromium runs on 2026-11-11 (SwiftShader WebGL). No physical Quest and no immersive
+session was run, so XR presentation on the new version is not proven.
+
+### What Valley Line needs from its Three.js
+
+Valley Line `a3332969cb80f0e61f1b71d77118000bc873de09`, built with this branch of Halo in place of v0.2.5:
+
+| Build | Result |
+| --- | --- |
+| `three` 0.185.1 (its lockfile) | `npm run build` and its 32 unit tests pass. One Three.js r185 per bundle. In the browser the splash and the boarded game render, with Halo's HUD windows drawn and no page errors; the only failed request is its absent BFF (`/api/v1/health`). |
+| `three` 0.160.1, `@types/three` 0.160.0 | The build fails: `TS2339: Property 'environmentIntensity' does not exist on type 'Scene'` at `src/game-engine/engine.ts:1205` and `:1208`. `Scene.environmentIntensity` is absent from 0.160.1's `Scene.js` and present in 0.185.1's. |
+
+Everything else Valley Line imports from `three` and from the addons (`GLTFLoader`,
+`RGBELoader`, `Sky`, `BufferGeometryUtils`, `XRControllerModelFactory`) type-checks on
+0.160.1. Its renderer setup (sRGB output, ACES tone mapping, PMREM environment, PCF
+shadows, `local-floor` reference space, foveation, controller and grip objects) uses
+APIs present in both. On 0.185.1 it logs two deprecations of its own:
+`PCFSoftShadowMap has been deprecated. Using PCFShadowMap instead` and `RGBELoader has
+been deprecated. Please use HDRLoader instead`. Revisions between 0.160.1 and 0.185.1
+were not built; 0.185.1 was chosen because Valley Line already runs on it.
+
+### What 0.185.1 changes in Halo
+
+- `startAnimationLoop` advances a `THREE.Timer` with the loop's timestamp instead of a
+  `THREE.Clock`, which is deprecated since r183 and warns when constructed. It now
+  throws `missing THREE.Timer` when handed a Three.js older than r179. Callers already
+  pass the whole `THREE` namespace; no call changes.
+- Nothing else in `src/` needed a change for the Three.js move. After path-camera
+  (v0.2.7) and device input (v0.2.8) merged, `npm run build` is 93 tests. `npm run
+  test:browser` covers the chat panel, the settings window on desktop and touch, and
+  the path camera on desktop and in simulated XR, and `npm run audit:release` passes
+  on 0.185.1. The chat-panel browser run records no console error.
+- 0.185's `build/three.module.js` imports `./three.core.js`, so a host that serves or
+  copies only `three.module.js` breaks; serve the whole `build/` directory.
+
+### What it breaks in consumers
+
+`npm run gate` now serves this checkout's `three` to each consumer's
+`node_modules/three` (`--own-three` keeps each consumer's copy). Run against the v0.3.0
+candidate and the 12 consumers beside it, at the consumer commits named here (several
+were moving their import maps that day; stellarops moved from esm.sh to `node_modules`
+between runs):
+
+| Consumer (commit) | `three` 0.185.1 | Own `three` (0.160.x) |
+| --- | --- | --- |
+| ascent-protocol `0bb3891`, game-civ `f3dddf4`, goblin-quest `1640d71`, gravacrest `11ea61b`, stellarops `6e2d0a0` | ok | fail: `missing THREE.Timer` |
+| conduit `750d294`, loom `5ff7727` (Lattice v0.2.1) | ok | ok (no `startAnimationLoop`) |
+| garbage-can-race `bd4e0e9` | fail: `THREE.BatchedMesh: Invalid instanceId 0` | fail: `missing THREE.Timer` |
+| demo `c84f0a4` (esm.sh three 0.160.0, troika 0.49.0) | ok once three is 0.185.1 and troika 0.52.4 | fail: `missing THREE.Timer` |
+| chorus `2bf4d3c`, helix `c46052a`, insight `804614e` (Lattice; esm.sh three 0.160.0, troika 0.49.0) | ok once three is 0.185.1 and troika 0.52.4 | ok (no `startAnimationLoop`) |
+
+The esm.sh rows came from a one-off run that rewrote those consumers' esm.sh requests
+to the 0.185.1 copy and troika 0.52.4; the gate itself cannot switch a CDN import. With
+three 0.185.1 and troika 0.49.0, chorus, demo and insight fail with `Cannot set property
+customDepthMaterial of ... which has only a getter`: 0.185.1's `Object3D` constructor
+assigns `customDepthMaterial`, which troika 0.49.0's text mesh defines as a getter only.
+Troika 0.52.4 has the setter. Lattice's runtime ran on 0.185.1 inside conduit, game-civ,
+helix, loom, chorus and insight; Lattice's own build and tests on 0.185.1 were not run here.
+
+### Repeatable migrated-consumer gate
+
+On November 11 the consumers' installed import maps had moved to local modules.
+The default `npm run gate` then passed 11/12 consumers; garbage-can-race still
+failed on `Invalid instanceId 0`. This remains a failing default gate until the
+consumer's own migration ships. No errors are suppressed by the candidate probe.
+
+The complete candidate run is `npm run gate -- --overlay .scratchpad/candidates`:
+12/12 passed on Three.js 0.185.1 in headless Chromium with SwiftShader. This tests
+the documented migration, not the readiness of unmodified consumers. The overlay
+contains only a disposable copy of garbage-can-race's `src/props.js`, with the
+`addInstance` migration below. The actual game fix belongs in its consumer ticket;
+Halo ships only generic fixture serving. The other eleven consumers use their
+installed local Three.js/Troika import maps with Halo's candidate Three.js served
+by the gate. CDN configurations must first migrate their import maps as described
+above; the gate does not replace CDN requests.
+
+To reproduce, save this preparation script as `.scratchpad/prepare-candidates.ps1`
+and run it from the Halo checkout using
+`pwsh -NoProfile -File .scratchpad/prepare-candidates.ps1`. It requires the sibling
+consumer checkout at `bd4e0e9` (or the same batching statement) and installed
+consumer dependencies. It fails if the expected source has changed. Use a fresh
+overlay directory: every file in it must be requested during the gate.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$source = (Resolve-Path ../garbage-can-race/src/props.js).Path
+$original = [IO.File]::ReadAllText($source)
+$before = 'const id = mesh.addGeometry(item.geometry);'
+$after = 'const id = mesh.addInstance(mesh.addGeometry(item.geometry));'
+if ($original.Split($before, [StringSplitOptions]::None).Length -ne 2) {
+    throw 'Expected exactly one pre-migration batching statement'
+}
+$directory = New-Item -ItemType Directory -Force .scratchpad/candidates/garbage-can-race/src
+[IO.File]::WriteAllText((Join-Path $directory.FullName 'props.js'), $original.Replace($before, $after))
+npm run gate -- --overlay .scratchpad/candidates
+if ($LASTEXITCODE -ne 0) { throw 'Migrated consumer gate failed' }
+```
+
+The gate prints SHA-256 fingerprints for both original and replacement bytes and
+labels the run `MIGRATED FIXTURES`. It rejects missing source files, overlays outside
+selected consumers, dependency overlays, empty overlays, and unused fixture files.
+It never writes consumer files. For this probe the original props hash was
+`a73b50356715a5f64db7712841fb860d3123d1e4531fcb7955c261e12180af5e`
+and the candidate hash was
+`42d66d86389aea9d76e77ce0669c0a2cce6015be6f7b7e71bf252e2931eae5b4`.
+The absent local game backend's `/api/play/guest` returned 404, reported as a note
+under the existing gate policy. These browser smoke runs do not establish headset
+behavior, backend integration, or exhaustive gameplay correctness.
+
+### Migration notes
+
+Each is the consumer's own change, made when it moves to Halo v0.3.0:
+
+1. Move `three` to exactly `0.185.1` in the same change as the Halo pin
+   (`github:Rick-Boardman/vr-halo#v0.3.0`); TypeScript consumers move `@types/three`
+   to 0.185. Keep one Three.js instance.
+2. Use `troika-three-text` 0.52.4 (Halo's peer). 0.49.0 breaks on 0.185.1.
+3. Consumers whose import map loads three or troika from esm.sh (chorus, demo, helix,
+   insight) point the map at the installed 0.185.1 and 0.52.4, serving the whole
+   `three/build/` directory.
+4. garbage-can-race: in 0.185.1 `BatchedMesh.addGeometry` returns a geometry id and
+   an instance comes from `addInstance(geometryId)` (0.160.1 has no `addInstance`);
+   pass the instance id to `setMatrixAt` (`src/props.js`).
+5. Lattice moves its own `three` peer and devDependency to 0.185.1 and releases first;
+   Lattice consumers (chorus, conduit, game-civ, helix, insight, loom) then move
+   Halo, Lattice and `three` together.
+6. Valley Line no longer needs a peer mismatch: once on v0.3.0, its `three` matches
+   Halo's peer. Its `HDRLoader` and `PCFShadowMap` deprecations are its own.

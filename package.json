@@ -1,6 +1,6 @@
 {
   "name": "@rb/halo",
-  "version": "0.2.8",
+  "version": "0.3.0",
   "description": "Browser-native Three.js and WebXR runtime with scene, navigation, input, and WebGL HUD primitives.",
   "private": true,
   "type": "module",
@@ -37,11 +37,11 @@
   ],
   "sideEffects": false,
   "peerDependencies": {
-    "three": "0.160.1",
+    "three": "0.185.1",
     "troika-three-text": "^0.52.4"
   },
   "devDependencies": {
-    "three": "0.160.1",
+    "three": "0.185.1",
     "troika-three-text": "0.52.4",
     "playwright": "1.62.1"
   },

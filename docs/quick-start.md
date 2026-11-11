@@ -34,13 +34,17 @@ the draft, and a delayed send never clears text edited while waiting.
 ## Install a versioned package in another application
 
 ```sh
-npm install three@0.160.1 troika-three-text@0.52.4 https://github.com/Rick-Boardman/vr-halo/releases/download/v0.2.0/rb-halo-0.2.0.tgz
+npm install three@0.185.1 troika-three-text@0.52.4 https://github.com/Rick-Boardman/vr-halo/releases/download/v0.3.0/rb-halo-0.3.0.tgz
 ```
 
 Import the bootstrap from `@rb/halo` and the chat panel from `@rb/halo/ui`.
 A bundler can resolve these package imports. For browser-native ESM, use an import
 map like the included example, adapting the module roots to your host. Map
 `three` and all Troika transitive imports to a single compatible installation.
+Three.js 0.185's `build/three.module.js` imports `./three.core.js` beside it, so
+serve the whole `build/` directory, not the one file. Halo's peer is exactly
+`three` 0.185.1 from v0.3.0; [migration notes](runtime-contracts.md#threejs-01851-peer-v030)
+list what consumers on 0.160 change.
 
 Copy Halo's asset directory and its accompanying font licenses together when
 self-hosting modules. Serve JavaScript with a JavaScript MIME type.
