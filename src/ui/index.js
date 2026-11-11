@@ -104,3 +104,33 @@ export { createTitleBarClass } from "./title-bar.js";
  * docks a text field in its footer when a caller invokes it.
  */
 export { createHudChatPanel } from "./chat-panel.js";
+
+/**
+ * Purpose: Re-export the WebGL HUD form controls (dropdown, number field,
+ * checkbox, slider, button, status line) and their layout and hit-test helpers.
+ * Parameters and return values: forwarded from ../hud-form-controls.js.
+ * Side effects: none; the controller holds no listeners or GPU resources.
+ */
+export {
+  DEFAULT_FORM_PALETTE,
+  contains,
+  createHudFormController,
+  layoutFormRows,
+  sanitizeNumberText,
+} from "../hud-form-controls.js";
+
+/**
+ * Purpose: Re-export the standard graphics and sound settings window, which
+ * paints form controls on the HUD settings window and reaches quality and audio
+ * only through injected callbacks.
+ * Parameters and return values: forwarded from ../hud-settings-window.js.
+ * Side effects: none in this barrel; createHudSettingsWindow adds one keydown
+ * listener, one mesh and one canvas texture, all removed by its dispose().
+ */
+export {
+  createHudSettingsWindow,
+  nearestTierIndex,
+  qualityLabel,
+  qualityOptions,
+  settingsCallbacksFromCalibration,
+} from "../hud-settings-window.js";

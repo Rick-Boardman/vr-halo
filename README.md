@@ -28,7 +28,8 @@ HTTPS outside localhost and a compatible browser/device.
 
 - Scene/HUD bootstrap and canonical render ordering.
 - Desktop, touch, flat/isometric, and immersive navigation primitives.
-- WebGL HUD windows, text, tooltips, skins, editors, and application-fed chat panels.
+- WebGL HUD windows, text, tooltips, skins, editors, form controls, a graphics and sound
+  settings window, and application-fed chat panels.
 - World-object selection, XR controllers, frame timing, and cleanup helpers.
 - Optional system-keyboard integration when the immersive browser reports support.
 

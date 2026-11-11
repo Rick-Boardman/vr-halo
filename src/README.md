@@ -206,6 +206,57 @@ a stranger typed.
 `examples/chat-panel/` is a runnable page with a fake transport, and
 `scripts/look-at-chat-panel.mjs` drives it headlessly and saves a screenshot.
 
+### Form controls and the settings window
+
+`createHudFormController(...)` (from [`ui/index.js`](./ui/index.js), module
+[`hud-form-controls.js`](./hud-form-controls.js)) lays out, hit-tests and paints
+rows of WebGL form controls on a 2D canvas: `status`, `dropdown`, `number`,
+`checkbox`, `slider` and `button`. Each row reads its value through a callback
+and reports changes through one (`onSelect`, `onCommit`, `onToggle`, `onInput`,
+`onPress`); it holds no Three.js objects or listeners. Coordinates are window
+pixels, origin top-left. `layoutFormRows`, `contains`, `sanitizeNumberText` and
+`DEFAULT_FORM_PALETTE` are exported beside it.
+
+`createHudSettingsWindow(...)` ([`hud-settings-window.js`](./hud-settings-window.js))
+paints those controls on the HUD `settings` window: Quality (Low/Medium/High
+dropdown), Ratio (pixel-ratio number field), Automatic, Volume, Mute, the app's
+`extraRows`, and Calibrate again. Quality and sound reach the app only through
+the injected `quality` and `audio` callbacks; `settingsCallbacksFromCalibration`
+builds both from a `createQualityCalibration` instance such as the bootstrap's
+`quality`.
+
+```js
+import { createHudSettingsWindow, settingsCallbacksFromCalibration } from "./ui/index.js";
+
+const settings = createHudSettingsWindow({
+  THREE,
+  hudSystem,
+  renderer,
+  ...settingsCallbacksFromCalibration(quality), // or your own { quality, audio }
+  palette: { accent: "#e8c97a" },               // optional colour overrides
+  extraRows: [{ kind: "checkbox", key: "extreme", label: "Extreme crashes",
+    checked: () => extreme, onToggle: (next) => saveExtreme(next) }],
+  notes: () => ["Saved on this device."],
+});
+
+// Each frame: sample input before the HUD update, paint after it.
+settings.prepare();
+renderHudFrame({ renderer, scene, camera, dt, hudSystem, navigation });
+settings.afterHud();
+```
+
+Desktop mouse and touch arrive through `hud.pointer`, the XR controller ray
+through `hud.vrPointer`. The number field takes desktop keys in capture phase
+and, in a session that reports `isSystemKeyboardSupported`, opens the Quest
+system keyboard through `webxr-system-keyboard.js`. Pass
+`isTyping: () => settings.isTyping()` to the scene bootstrap so typing does not
+walk. The window clears the `settings` window's own text lines (the bootstrap's
+calibration writes them) and hides its scroll chrome. `dispose()` removes the
+key listener, closes the system keyboard, and frees the mesh, material,
+geometry and canvas texture. Palette, presets, game modes, asset quality and
+persistence stay in the app. `examples/settings-window/` is a runnable page and
+`scripts/look-at-settings-window.mjs` drives it with mouse, keyboard and touch.
+
 ## World-object picking
 
 Use `wireSceneSelection(...)` instead of a custom raycaster. It unifies desktop
@@ -277,7 +328,7 @@ From the shared library root:
 
 - `npm test` checks the system-keyboard bridge with simulated DOM/session objects.
 - `npm run build` validates imports, package exports, and the unit tests.
-- `npm run test:browser` exercises the included WebGL chat example.
+- `npm run test:browser` exercises the included WebGL chat and settings-window examples.
 - `npm run audit:release` checks the candidate files and local documentation links.
 
 Use a fresh-origin browser smoke check on the smallest affected harness whenever
