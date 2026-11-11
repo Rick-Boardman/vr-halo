@@ -114,7 +114,7 @@ runtime modules.
 - [input/index.js](./input/index.js) — device input normalization (keys, XR sticks
   and buttons, VR hands, phone orientation) and `createInputMapping`. See
   [Device input](#device-input).
-- [curve-surface.js](./curve-surface.js) — curve-sampled strip geometry and
+- [curve-surface.js](./curve-surface.js) — edge-pair ribbons, curve-sampled strip geometry and
   horizontal curve-normal helpers reused by road/track scene assembly.
 - [hud.js](./hud.js) — HUD namespace / compatibility surface.
 
@@ -122,6 +122,36 @@ runtime modules.
 > they live in Lattice (`https://github.com/Rick-Boardman/vr-lattice`). Racing/vehicle helpers live in
 > the owning app (for example Gravacrest `runtime/`), built on Halo primitives
 > such as `curve-surface.js`.
+
+## Edge-pair road ribbons (v0.3.1)
+
+```js
+import { buildRibbonSurfaceGeometry } from "@rb/halo/curve-surface";
+
+const geometry = buildRibbonSurfaceGeometry([
+  { leftPoint: { x: -2, y: 0, z: 0 }, rightPoint: { x: 2, y: 0, z: 0 } },
+  { leftPoint: { x: -2, y: 1, z: -5 }, rightPoint: { x: 2, y: 1, z: -5 } },
+], { uvScale: 4 });
+// Attach geometry to your mesh; call geometry.dispose() when removing it.
+```
+
+The helper returns indexed `BufferGeometry` with position, computed normal and
+UV attributes. It accepts finite `{ x, y, z }` left/right points, leaves them
+unchanged, and requires two pairs for an open strip (the default). With
+`{ closed: true }`, provide at least three pairs; it joins the last to the first,
+duplicating the first pair for the UV seam. A repeated final pair is also accepted.
+U advances uniformly by pair index from 0 to `uvScale` (default 1), and V is 0
+on the named left edge and 1 on the named right. Normals at the duplicated seam
+are computed separately for its two ends.
+
+Every triangle's winding and all vertex normals face positive Y for either travel
+direction or left/right naming, including slopes. Degenerate or vertical triangles
+with zero XZ projected area throw `RangeError`; malformed/nonfinite coordinates
+or options throw `TypeError`. Geometry is checked after Float32 conversion;
+coordinates too extreme to compute finite upward Float32 normals throw `RangeError`.
+The caller owns sampling, intersections, widths and course policy. This geometry
+behaves identically on desktop, touch and XR; it adds no input or device behavior.
+`buildRoadSurfaceGeometry` retains its existing closed-curve contract and winding.
 
 ## Runtime HUD windows (no visible DOM overlays)
 
