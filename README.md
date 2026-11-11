@@ -60,12 +60,20 @@ npm run pack:deliverable
 npm run gate
 ```
 
-`npm run gate` runs this working copy in place of the pinned Halo of every consumer
-folder beside the checkout (an `index.html` plus `@rb/halo` in its `package.json`), in
-headless Chromium, and fails on page errors, console errors or a Halo file that did not
-load. It also serves this checkout's `three` (the exact peer) to each consumer's
+`npm run gate` discovers consumers from the committed `origin/main` of repositories
+beside the checkout (an `index.html` plus `@rb/halo` in `package.json`). It clones those
+exact commits into disposable `.scratchpad/consumer-gate-*` directories, runs `npm ci`
+from each committed lockfile, then runs this working copy in place of their pinned
+Halo in headless Chromium. Sibling branches, dirty files and installed modules are
+never served or changed. The gate prints each consumer commit; its baseline is the
+locally recorded `origin/main`, so refresh those remote-tracking refs before release
+if needed. Missing lockfiles and failed installs fail the gate; temporary clones are
+removed on success or failure. `--only name,name` selects consumers and rejects unknown
+names; `--root <directory>` changes the discovery directory.
+It fails on page errors, console errors or a Halo file that did not load.
+It also serves this checkout's `three` (the exact peer) to each consumer's
 `node_modules/three`, since moving the Halo pin moves `three` too; `--own-three` keeps each
-consumer's installed copy. Run it before tagging a release; see `scripts/consumer-gate.mjs`.
+consumer's freshly installed locked copy. Run it before tagging a release; see `scripts/consumer-gate.mjs`.
 For a breaking peer upgrade, `--overlay <directory>` also tests isolated migrated
 consumer files without editing consumer checkouts. It prints file hashes and fails
 if an overlay file is not exercised. Keep the unmodified run as evidence too; see
