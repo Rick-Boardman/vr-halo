@@ -205,6 +205,49 @@ try {
   await clickComposer();
   step('desktop picking works after dispose', true);
 
+  // Freeze application frames so unrelated metrics/input cannot invalidate the
+  // HUD. Drive only normal HUD updates, with no controllers aimed at the panel.
+  const refresh = await page.evaluate(async () => {
+    const { hudSystem, renderer } = globalThis.__haloChatExample;
+    const { THREE, chatKey } = globalThis.__pathCamera;
+    const api = await import('/src/hud.js');
+    renderer.setAnimationLoop(null);
+    renderer.xr.isPresenting = true;
+    for (let i = 0; i < 30; i++) hudSystem.update(0);
+    const mount = api.createHudPathCameraMount({ THREE, renderer, hud: hudSystem.hud });
+    mount.update();
+    const panels = api.createHudPathCameraPanels({
+      hudSystem, columns: [{ yaw: 0.9, keys: [chatKey] }], placeOthers: false,
+    });
+    panels.place();
+    // Baseline rendering is intentional; the pitch change below must render
+    // without bringToFront or any other independent invalidation.
+    hudSystem.bringToFront(chatKey);
+    for (let i = 0; i < 30; i++) { hudSystem.update(0); mount.update(); }
+    const hud = hudSystem.hud;
+    const hit = hud.objects.windows[chatKey].hit;
+    const before = hit.getWorldPosition(new THREE.Vector3());
+    const clean = hud._dirty === false;
+    panels.place({ pitch: 0.2 });
+    const invalidated = hud._dirty === true;
+    for (let i = 0; i < 10; i++) { hudSystem.update(0); mount.update(); }
+    const after = hit.getWorldPosition(new THREE.Vector3());
+    const win = hud.ui.windows[chatKey];
+    const yaw = ((win.x + win.w / 2) / hud.layoutW - 0.5) * hudSystem.getVrYawPerScreen();
+    const pitch = (0.5 - (win.y + win.h / 2) / hud.layoutH) * hudSystem.getVrPitchPerScreen();
+    const direction = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))
+      .applyQuaternion(hud.root.getWorldQuaternion(new THREE.Quaternion()));
+    const origin = hud.root.getWorldPosition(new THREE.Vector3());
+    const picked = new THREE.Raycaster(origin, direction).intersectObject(hit).length > 0;
+    const result = { clean, invalidated, moved: before.distanceTo(after) > 0.1, picked, pointerActive: !!hud.vrPointer?.active };
+    renderer.xr.isPresenting = false;
+    hudSystem.update(0);
+    mount.dispose();
+    return result;
+  });
+  step('clean HUD: pitch change refreshes geometry and picking',
+    refresh.clean && refresh.invalidated && refresh.moved && refresh.picked && !refresh.pointerActive, JSON.stringify(refresh));
+
   const thrown = errors.filter((line) => !/Failed to load resource/i.test(line));
   step('nothing threw in the page', thrown.length === 0, thrown.slice(0, 2).join(' | ') || 'clean');
   console.log('DONE');

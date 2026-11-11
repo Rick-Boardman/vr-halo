@@ -138,7 +138,8 @@ export function createHudPathCameraMount({ THREE, renderer, hud, name = "hud-pat
  * @returns {{ place: (look?: { pitch?: number, layoutW?: number, layoutH?: number }) => void, reset: () => void, isUserPlaced: (key: string) => boolean }}
  *   `place` stages windows for this frame; `pitch` (radians, positive up)
  *   moves the stacks' vertical centre off the sphere centre.
- * Side effects: `place` writes `x`/`y` of open, undragged windows in `hudSystem.hud.ui.windows`.
+ * Side effects: `place` writes `x`/`y` of open, undragged windows in `hudSystem.hud.ui.windows`
+ *   and requests a HUD render when those coordinates change.
  */
 export function createHudPathCameraPanels({
   hudSystem,
@@ -210,8 +211,15 @@ export function createHudPathCameraPanels({
         const w = Math.max(1, Number(win.w) || 1);
         // A held or dropped window keeps its spot; its slot in the stack stays reserved.
         if (key !== dragKey && !userPlaced.has(key)) {
-          win.x = Math.round(cx - w / 2);
-          win.y = Math.max(minYPx, Math.round(y));
+          const x = Math.round(cx - w / 2);
+          const nextY = Math.max(minYPx, Math.round(y));
+          if (win.x !== x || win.y !== nextY) {
+            win.x = x;
+            win.y = nextY;
+            // Coordinate fields are plain values; the normal frame update only
+            // rebuilds rendered panels and their hit meshes when HUD is dirty.
+            hud._dirty = true;
+          }
         }
         y = Math.max(minYPx, Math.round(y)) + h + gapPx;
       }

@@ -215,6 +215,8 @@ Coordinate contract:
   pointer's mapping. In layout pixels +x is screen-right, so a positive column
   `yaw` is to the right. `place({ pitch })` moves the stacks' vertical centre off
   the sphere centre; pass `0` when the mount already aims at the look pitch.
+  Changed coordinates request a render on the next HUD update; unchanged
+  placement leaves the HUD clean.
 - A hidden window (Halo parks it at `y < -1000`) is never moved, so its restore
   point survives; `showKeys` are placed even when parked (for Enter/Exit VR).
   A window being dragged is left alone, and once dropped it keeps its spot

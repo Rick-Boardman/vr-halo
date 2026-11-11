@@ -178,6 +178,19 @@ test("a dragged window is not moved while held and keeps its drop point until re
   assert.notDeepEqual([windows.a.x, windows.a.y], [77, 88], "reset restages it");
 });
 
+test("placement invalidates a clean HUD only when coordinates change", () => {
+  const sys = hudSystemWith({ a: { x: 0, y: 0, w: 200, h: 100 } });
+  const panels = createHudPathCameraPanels({ hudSystem: sys, columns: [{ yaw: 0.9, keys: ["a"] }] });
+  sys.hud._dirty = false;
+  panels.place();
+  assert.equal(sys.hud._dirty, true);
+  sys.hud._dirty = false;
+  panels.place();
+  assert.equal(sys.hud._dirty, false, "unchanged layout does not render every frame");
+  panels.place({ pitch: 0.2 });
+  assert.equal(sys.hud._dirty, true, "pitch changes request rendering");
+});
+
 test("createHudPathCameraPanels fails loudly on bad options", () => {
   assert.throws(() => createHudPathCameraPanels({ columns: [{ yaw: 0 }] }), /\[halo:path-camera\]/);
   assert.throws(() => createHudPathCameraPanels({ hudSystem: hudSystemWith({}), columns: [] }), /\[halo:path-camera\]/);
