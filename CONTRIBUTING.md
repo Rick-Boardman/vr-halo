@@ -30,9 +30,12 @@ with `npx playwright install chromium`. Test the affected behavior in the
 included example. Changes to immersive input also need physical-device checks;
 report explicitly when a headset check has not been performed. Inspect
 `npm pack --dry-run` before changing package contents. Before a release tag, run
-`npm run gate`: it loads every consumer beside this checkout with this working copy
-in place of its pinned Halo, on this checkout's `three`, and reports which would break when
-they move their pin (`--own-three` leaves each consumer on its installed Three.js).
+`npm run gate`: it loads isolated copies of every consumer's locally recorded
+`origin/main` with a fresh `npm ci`, this working copy in place of its pinned Halo,
+and this checkout's `three`. It prints the tested commits and reports which would
+break when they move their pin (`--own-three` uses each consumer's locked Three.js).
+Refresh consumer remote-tracking refs before a release when needed. See the README
+for baseline selection and cleanup; the gate never changes sibling checkouts.
 
 ## AI-assisted contributions
 

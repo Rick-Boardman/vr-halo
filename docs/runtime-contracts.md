@@ -220,6 +220,14 @@ helix, loom, chorus and insight; Lattice's own build and tests on 0.185.1 were n
 
 ### Repeatable migrated-consumer gate
 
+The gate now uses disposable clones of the locally recorded consumer `origin/main`
+commits with fresh locked installs, rather than live sibling branches or modules.
+It prints the commits tested and removes the clones after the run. The results
+below describe the historical live-checkout probe; to repeat that migration against
+the new baseline, generate overlays from the matching committed source and check
+the printed original hashes. No consumer dependency installation is needed in the
+live checkout; each selected baseline must have a working `package-lock.json`.
+
 On November 11 the consumers' installed import maps had moved to local modules.
 The default `npm run gate` then passed 11/12 consumers; garbage-can-race still
 failed on `Invalid instanceId 0`. This remains a failing default gate until the
@@ -238,8 +246,8 @@ above; the gate does not replace CDN requests.
 To reproduce, save this preparation script as `.scratchpad/prepare-candidates.ps1`
 and run it from the Halo checkout using
 `pwsh -NoProfile -File .scratchpad/prepare-candidates.ps1`. It requires the sibling
-consumer checkout at `bd4e0e9` (or the same batching statement) and installed
-consumer dependencies. It fails if the expected source has changed. Use a fresh
+consumer source with the same batching statement as `bd4e0e9`, matching the
+selected `origin/main` baseline. It fails if the expected source has changed. Use a fresh
 overlay directory: every file in it must be requested during the gate.
 
 ```powershell

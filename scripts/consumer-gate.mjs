@@ -8,7 +8,7 @@
 // Consumers pin a Halo tag (github:Rick-Boardman/vr-halo#vX.Y.Z) and load it from their own
 // node_modules through an import map, so a Halo release can break nobody until a consumer moves
 // its pin. This gate answers the question before the tag: what would break when they do? It
-// serves the consumers' parent folder on a local port and answers every request for
+// serves disposable origin/main snapshots with fresh locked installs, and answers every request for
 // <consumer>/node_modules/@rb/halo/<path> from THIS checkout, so each consumer runs the candidate
 // in place of its pinned tag. A consumer is a folder with an index.html and @rb/halo in its
 // package.json dependencies. For each, headless Chromium loads the page, waits for a canvas,
@@ -16,7 +16,7 @@
 // error, console error, or Halo file that did not answer 200 (a consumer that never asked for a
 // Halo file did not run the candidate and fails too). Other failed requests, such as a consumer
 // probing a backend a bare local serve cannot answer, are reported, not failed. Exit code 1 when
-// any consumer fails. Nothing is written.
+// any consumer fails. Only this checkout's ignored .scratchpad is written; sibling checkouts are read-only.
 //
 // Three.js is Halo's exact peer, so a consumer that moves its Halo pin moves `three` with it. The
 // gate therefore also answers <consumer>/node_modules/three/<path> from THIS checkout's
@@ -32,6 +32,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
+import { prepareConsumers } from './consumer-snapshots.mjs';
 
 const halo = resolve(fileURLToPath(import.meta.url), '..', '..');
 const args = process.argv.slice(2);
@@ -39,7 +40,7 @@ const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : fallback;
 };
-const root = resolve(flag('root', resolve(halo, '..')));
+const sourceRoot = resolve(flag('root', resolve(halo, '..')));
 const only = (flag('only', '') || '').split(',').map((x) => x.trim()).filter(Boolean);
 const ownThree = args.includes('--own-three');
 const overlay = flag('overlay', null);
@@ -68,26 +69,11 @@ if (!ownThree && !existsSync(join(threeRoot, 'package.json'))) {
 }
 const threeVersion = ownThree ? null : JSON.parse(await readFile(join(threeRoot, 'package.json'), 'utf8')).version;
 
-const consumers = [];
-for (const entry of await readdir(root, { withFileTypes: true })) {
-  if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-  const folder = join(root, entry.name);
-  if (resolve(folder) === halo || !existsSync(join(folder, 'index.html')) || !existsSync(join(folder, 'package.json'))) continue;
-  let pkg;
-  try {
-    pkg = JSON.parse(await readFile(join(folder, 'package.json'), 'utf8'));
-  } catch {
-    continue;
-  }
-  const pin = (pkg.dependencies || {})['@rb/halo'] || (pkg.devDependencies || {})['@rb/halo'];
-  if (!pin) continue;
-  if (only.length && !only.includes(entry.name)) continue;
-  consumers.push({ name: entry.name, folder, pin });
-}
-if (!consumers.length) {
-  console.error(`consumer gate: no consumer under ${root}${only.length ? ` named ${only.join(', ')}` : ''}`);
-  process.exit(1);
-}
+const snapshot = await prepareConsumers(sourceRoot, join(halo, '.scratchpad'), only);
+const { root, consumers } = snapshot;
+let browser;
+let server;
+try {
 for (const [pathname, fixture] of overrides) {
   if (!consumers.some(({ name }) => pathname.startsWith(`/${name}/`)) || pathname.includes('/node_modules/')) {
     throw new Error(`consumer gate: overlay must target a selected consumer source file: ${pathname}`);
@@ -105,7 +91,7 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
 const CANDIDATE = /^\/([^/]+)\/node_modules\/@rb\/halo(\/.*)?$/;
 const PEER_THREE = /^\/([^/]+)\/node_modules\/three(\/.*)?$/;
 
-const server = createServer(async (request, response) => {
+server = createServer(async (request, response) => {
   const url = new URL(request.url, 'http://localhost');
   const pathname = decodeURIComponent(url.pathname);
   const fixture = overrides.get(pathname);
@@ -129,9 +115,9 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 
 const version = JSON.parse(await readFile(join(halo, 'package.json'), 'utf8')).version;
 const threeNote = ownThree ? 'each consumer on its own three' : `three ${threeVersion} from this checkout`;
-console.log(`consumer gate: Halo ${version} (this checkout), ${threeNote}, against ${consumers.length} consumer(s) under ${root}\n`);
+console.log(`consumer gate: Halo ${version} (this checkout), ${threeNote}, against ${consumers.length} isolated origin/main consumer(s) from ${sourceRoot}\n`);
 if (overlay) console.log('consumer gate: MIGRATED FIXTURES; default gate without --overlay tests unmodified consumers\n');
-const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
 let failed = 0;
 for (const consumer of consumers) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -172,8 +158,6 @@ for (const consumer of consumers) {
   console.log(`${problems.length ? 'FAIL' : 'ok  '} ${consumer.name} (pins ${consumer.pin}; ${haloFiles} Halo files${ownThree ? '' : `, ${threeFiles} three files`} from this checkout)${lines.length ? '\n     ' + lines.join('\n     ') : ''}`);
   await page.close();
 }
-await browser.close();
-server.close();
 let unused = 0;
 for (const [pathname, fixture] of overrides) {
   if (!fixture.hits) {
@@ -182,4 +166,15 @@ for (const [pathname, fixture] of overrides) {
   }
 }
 console.log(failed || unused ? `\nCONSUMER GATE FAILED: ${failed} of ${consumers.length} consumers; ${unused} unused fixtures` : `\nconsumer gate passed: ${consumers.length} consumers run Halo ${version}${ownThree ? '' : ` on three ${threeVersion}`}`);
-process.exit(failed || unused ? 1 : 0);
+process.exitCode = failed || unused ? 1 : 0;
+} finally {
+  try {
+    await browser?.close();
+  } finally {
+    try {
+      if (server?.listening) await new Promise((ok, fail) => server.close((error) => error ? fail(error) : ok()));
+    } finally {
+      await snapshot.dispose();
+    }
+  }
+}
