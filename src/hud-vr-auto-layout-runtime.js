@@ -43,7 +43,6 @@ export function createHudVrAutoLayoutRuntime({
     const pad = outerPaddingPx;
     const gapX = interWindowGapXPx;
     const gapY = interWindowGapYPx;
-    const top = pad;
     const layoutW = Math.max(1, hud.layoutW);
     const layoutH = Math.max(1, hud.layoutH);
 
@@ -72,22 +71,31 @@ export function createHudVrAutoLayoutRuntime({
       keys.push(key);
     }
     const n = keys.length;
-    if (!n) return;
-
     let totalW = 0;
     for (const key of keys) {
       totalW += windows[key]?.w ?? 320;
     }
-    const avgW = totalW / n;
+    const avgW = n ? totalW / n : 0;
     const usableW = Math.max(1, layoutW - pad * 2);
-    const usableH = Math.max(1, layoutH - top - pad);
 
     let cols = Math.max(1, Math.floor(usableW / (avgW + gapX)));
-    cols = Math.min(cols, n);
+    cols = Math.min(cols, Math.max(1, n));
 
     const rows = Math.max(1, Math.ceil(n / cols));
-    const cellW = usableW / cols;
-    const cellH = usableH / rows;
+    // Equal-height cells let tall application windows overlap. Size each row
+    // and column from its actual windows, and let the sphere extend beyond the
+    // forward rectangle rather than clamping multiple windows onto one edge.
+    const colWidths = Array(cols).fill(0);
+    const rowHeights = Array(rows).fill(0);
+    for (let i = 0; i < n; i++) {
+      const win = windows[keys[i]];
+      colWidths[i % cols] = Math.max(colWidths[i % cols], win.w);
+      rowHeights[Math.floor(i / cols)] = Math.max(rowHeights[Math.floor(i / cols)], win.h);
+    }
+    const gridW = colWidths.reduce((a, b) => a + b, 0) + gapX * (cols - 1);
+    const gridH = rowHeights.reduce((a, b) => a + b, 0) + gapY * (rows - 1);
+    const startX = (layoutW - gridW) / 2;
+    const startY = Math.max(-900, (layoutH - gridH) / 2);
 
     for (let i = 0; i < n; i++) {
       const key = keys[i];
@@ -98,19 +106,13 @@ export function createHudVrAutoLayoutRuntime({
       const row = Math.floor(i / cols);
 
       const h = w.collapsed ? titleHeightPx : w.h;
-      const maxX = Math.max(pad, layoutW - w.w - pad);
-      const maxY = Math.max(top, layoutH - h - pad);
-
-      const cellX = pad + col * cellW;
-      const cellY = top + row * cellH;
-      const desiredX = cellX + (cellW - w.w) * 0.5;
-      const desiredY = cellY + (cellH - h) * 0.5;
-
-      w.x = clamp(desiredX, pad, maxX);
-      w.y = clamp(desiredY, top, maxY);
+      const cellX = startX + colWidths.slice(0, col).reduce((a, b) => a + b, 0) + gapX * col;
+      const cellY = startY + rowHeights.slice(0, row).reduce((a, b) => a + b, 0) + gapY * row;
+      w.x = cellX + (colWidths[col] - w.w) * 0.5;
+      w.y = cellY + (rowHeights[row] - h) * 0.5;
     }
 
-    const collapsedY = layoutH - titleHeightPx - pad;
+    let collapsedY = Math.max(layoutH - titleHeightPx - pad, startY + gridH + gapY);
     let collapsedX = pad;
     for (const key of collapsedKeys) {
       const w = windows[key];
@@ -120,6 +122,7 @@ export function createHudVrAutoLayoutRuntime({
       collapsedX += w.w + gapX * 0.5;
       if (collapsedX + w.w > layoutW - pad) {
         collapsedX = pad;
+        collapsedY += titleHeightPx + gapY;
       }
     }
 

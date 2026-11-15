@@ -177,6 +177,18 @@ hudSystem.setWindowLines(
 );
 ```
 
+`placeWindowContent(group, key)` attaches custom content to a native window's
+placement in desktop and XR. Add the group to `hud.plane`, then call the method
+after each HUD update. Children use window-local pixels (+x right, -y down);
+their z offsets are metres. Text font sizes and quad sizes use pixels. The
+group follows panel moves, resize, depth and collapse without a second sphere
+implementation. The caller owns and disposes its group and resources.
+
+`projectWorldPointToHud(worldPoint)` returns `{x, y}` in layout pixels (or null
+for an invalid/degenerate point). In XR it converts through the HUD root's
+current rig/mount transform and inverts the sphere's yaw/pitch mapping; it does
+not project through the flat browser canvas. Use it for spatial inspectors.
+
 `hudSystem` methods include `createWindow(key, layout)`,
 `setWindowLines(key, entries, opts)`, `setWindowHidden(key, hidden)`,
 `bringToFront(key)`, `isClientPointOverUi(clientX, clientY)`,
