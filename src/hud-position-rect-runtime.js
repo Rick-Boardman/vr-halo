@@ -141,5 +141,22 @@ export function createHudPositionRectRuntime({
 
   return {
     positionRect,
+    // Children use window-local pixels: +x right, -y down, z in metres.
+    // Reuse the native rectangle basis, including depth and frozen resize pose.
+    placeWindowContent(object, windowKey) {
+      const win = hud.ui?.windows?.[windowKey];
+      if (!win || win.collapsed || Number(win.y) < -1000) {
+        object.visible = false;
+        return false;
+      }
+      object.userData.windowKey = windowKey;
+      positionRect(object, win.x, win.y, 0, 0, 0);
+      object.scale.set(
+        renderer.xr.isPresenting ? vrMetersPerPxX() : 1 / hud.layoutW,
+        renderer.xr.isPresenting ? vrMetersPerPxY() : 1 / hud.layoutH,
+        1
+      );
+      return true;
+    },
   };
 }

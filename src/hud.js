@@ -33,6 +33,7 @@ import { createHudMetricsUpdater } from "./hud-metrics-runtime.js";
 
 import { createHudPlacementRuntime } from "./hud-placement-runtime.js";
 import { createHudPositionRectRuntime } from "./hud-position-rect-runtime.js";
+import { createHudWorldPointRuntime } from "./hud-world-point-runtime.js";
 import { createHudRenderTimeMeshMatrixRuntime } from "./hud-render-time-mesh-matrix-runtime.js";
 import { installHudDesktopInputRuntime } from "./hud-desktop-input-runtime.js";
 import { getHudDesktopClientSize } from "./hud-desktop-client-size.js";
@@ -1430,6 +1431,12 @@ export function createHudSystem(
     getVrYawPerScreen: () => _vrYawPerScreen(),
     getVrPitchPerScreen: () => _vrPitchPerScreen(),
     getDragWindowKey: () => _dragState.getDragWindowKey(),
+    placeWindowContent: (object, windowKey) => _positionRectRuntime.placeWindowContent(object, windowKey),
+    projectWorldPointToHud: createHudWorldPointRuntime({
+      THREE, renderer, camera, hud,
+      getVrYawPerScreen: _vrYawPerScreen,
+      getVrPitchPerScreen: _vrPitchPerScreen,
+    }),
     isPointOverUi: (px, py) => _windowStateRuntime.isPointOverUi(px, py),
     isClientPointOverUi: (clientX, clientY) => _windowStateRuntime.isClientPointOverUi(clientX, clientY),
     enterVR,
