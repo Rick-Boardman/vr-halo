@@ -1406,6 +1406,10 @@ export function createHudSystem(
     toggleWindow,
     setWindowCollapsed: (key, collapsed) => _windowVisibilityRuntime.setWindowCollapsed(key, collapsed),
     setWindowHidden: (key, hidden) => _windowVisibilityRuntime.setWindowHidden(key, hidden),
+    setWindowAppearanceTokens(windowKey, tokens = null) {
+      const win = hud.ui.windows?.[windowKey];
+      if (win) { win.appearanceTokens = tokens; hud._dirty = true; }
+    },
     setWindowLines: (windowKey, entries, options = {}) => _windowStateRuntime.setWindowLines(windowKey, entries, options),
     setWindowScrollTop: (windowKey, scrollTop, scrollMode = "manual") => _windowStateRuntime.setWindowScrollTop(windowKey, scrollTop, scrollMode),
     setWindowTextCaret: (windowKey, caretState) => _windowStateRuntime.setWindowTextCaret(windowKey, caretState),

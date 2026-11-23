@@ -9,6 +9,7 @@
  * @module hud-render-list-runtime
  */
 
+import { styleHudListEntry } from "./hud-appearance-tokens.js";
 import { HUD_TEXT_DEFAULT_COLOR } from "./hud-text-style.js";
 import { HUD_SURFACE_ACCENT_COLOR } from "./hud-surface-style.js";
 import { estimateTextWidthPx } from "./text-measurement.js";
@@ -159,7 +160,7 @@ export function createHudRenderListRuntime({
           entries,
           dot: labelDot,
           maxWidth,
-          defaultColor: HUD_TEXT_DEFAULT_COLOR,
+          defaultColor: win.appearanceTokens?.text ?? HUD_TEXT_DEFAULT_COLOR,
         });
 
     const effectiveCw = Math.max(0, Number(cw) || 0);
@@ -232,10 +233,12 @@ export function createHudRenderListRuntime({
       win._scrollVisibleLines = visibleLines;
     }
 
-    const slice = wrappedAll.slice(
+    const appearance = win.appearanceTokens;
+    const visible = wrappedAll.slice(
       win.scrollTop,
       win.scrollTop + visibleLines
     );
+    const slice = appearance ? visible.map((entry) => styleHudListEntry(entry, appearance)) : visible;
     const displayTexts = slice.map((entry) => (typeof entry === "string" ? entry : String(entry?.text ?? "")));
     const sourceTexts = slice.map((entry, index) => {
       if (entry && typeof entry === "object" && entry.sourceText != null) {
@@ -599,8 +602,8 @@ export function createHudRenderListRuntime({
     }
 
     try {
-      const rowInsetX = 2;
-      const rowInsetY = 1;
+      const rowInsetX = appearance ? 5 : 2;
+      const rowInsetY = appearance ? 2 : 1;
       const rows = slice
         .map((entry, index) => ({ entry, index }))
         .filter(({ entry }) => typeof entry?.rowBgColor === "number");

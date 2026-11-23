@@ -120,6 +120,7 @@ export function createHudWindowRenderLayoutRuntime({
     }
 
     const labelDot = getHudGlyphDotSizePx(renderer);
+    const bodyDot = labelDot * (win.appearanceTokens ? 1.08 : 1);
     const titleDot = labelDot * HUD_TEXT_HEADER_FONT_SIZE_MULTIPLIER;
     const titleChrome = getHudWindowTitleChrome(win, objs, effectiveTitleH);
     const controlRects = getHudWindowControlRects(win, objs, effectiveTitleH);
@@ -539,12 +540,14 @@ export function createHudWindowRenderLayoutRuntime({
     // For 9-slice windows the frame border is outside the content area.
     // Content rect is the inner region of the 9-slice; normal pad applies inside.
     const nsC = objs.nineSlice ? (objs.nineSlice.cornerSize || 24) : 0;
-    const cx = win.x + nsC + pad;
-    const cy = win.y + (nsC || effectiveTitleH) + pad;
+    const appearance = win.appearanceTokens;
+    const inset = appearance ? pad + 4 : pad;
+    const cx = win.x + nsC + inset;
+    const cy = win.y + (nsC || effectiveTitleH) + inset;
     // Reserve space for scrollbar on scrollable windows so text never overlaps it.
     const scrollReserve = win.scrollable ? HUD_SCROLLBAR_RESERVED_WIDTH_PX : 0;
-    const cw = win.w - nsC * 2 - pad * 2 - scrollReserve;
-    const ch = h - (nsC ? nsC * 2 : effectiveTitleH) - pad * 2;
+    const cw = win.w - nsC * 2 - inset * 2 - scrollReserve;
+    const ch = h - (nsC ? nsC * 2 : effectiveTitleH) - inset * 2;
 
     function placeScrollbar(totalLines, visibleLines, scrollTop, scrollActive) {
       if (!objs.scrollTrack || !objs.scrollThumb) return;
@@ -562,6 +565,16 @@ export function createHudWindowRenderLayoutRuntime({
       if (objs.scrollDownBtn) objs.scrollDownBtn.visible = true;
       objs.scrollThumb.visible = true;
 
+      const scrollParts = ["scrollTrack", "scrollThumb", "scrollUpBtn", "scrollDownBtn"];
+      if (appearance) {
+        objs._appearanceScrollColors ??= scrollParts.map(part => objs[part]?.material?.color?.getHex());
+        for (const part of scrollParts) objs[part]?.material?.color?.setHex(part === "scrollTrack" ? appearance.track : appearance.thumb);
+      } else if (objs._appearanceScrollColors) {
+        scrollParts.forEach((part, i) => {
+          if (objs._appearanceScrollColors[i] != null) objs[part]?.material?.color?.setHex(objs._appearanceScrollColors[i]);
+        });
+        delete objs._appearanceScrollColors;
+      }
       const trackX = win.x + win.w - nsC - HUD_SCROLLBAR_RIGHT_INSET_PX;
       const contentTopY = nsC || effectiveTitleH;
       const trackY = win.y + contentTopY + HUD_SCROLLBAR_TRACK_TOP_INSET_PX;
@@ -570,7 +583,7 @@ export function createHudWindowRenderLayoutRuntime({
         objs.scrollTrack,
         trackX,
         trackY,
-        HUD_SCROLLBAR_TRACK_WIDTH_PX,
+        appearance ? 8 : HUD_SCROLLBAR_TRACK_WIDTH_PX,
         trackH,
         HUD_Z_SURFACE_RECESSED + lift
       );
@@ -603,9 +616,9 @@ export function createHudWindowRenderLayoutRuntime({
       const thumbY = thumbAreaTop + Math.round(frac * thumbMaxY);
       positionRect(
         objs.scrollThumb,
-        trackX + 3,
+        trackX + (appearance ? 2 : 3),
         thumbY,
-        Math.max(0, HUD_SCROLLBAR_TRACK_WIDTH_PX - 6),
+        appearance ? 5 : Math.max(0, HUD_SCROLLBAR_TRACK_WIDTH_PX - 6),
         thumbH,
         HUD_Z_SURFACE_BG + lift
       );
@@ -648,12 +661,12 @@ export function createHudWindowRenderLayoutRuntime({
       }
     }
 
-    const maxVisibleLines = Math.max(1, Math.floor(ch / (12 * labelDot)));
+    const maxVisibleLines = Math.max(1, Math.floor(ch / (12 * bodyDot)));
 
     const _rlCtx = {
       win,
       objs,
-      labelDot,
+      labelDot: bodyDot,
       cx,
       cy,
       cw,
