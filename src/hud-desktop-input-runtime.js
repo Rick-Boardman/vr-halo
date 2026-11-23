@@ -32,9 +32,17 @@ export function installHudDesktopInputRuntime({
   enterVR = null,
   exitVR = null,
   enableContextMenu = true,
+  getTitleDoubleClickWindow = () => null,
+  handleTitleDoubleClick = () => false,
 } = {}) {
   // Track a single active pointer to avoid multi-touch racing.
   let _activePointerId = null;
+  let titlePress = null, firstTitleClick = null, lastTitleClick = null, titleGestureDisposed = false;
+  const dragSlop = 5;
+
+  function moved(event, press) {
+    return Math.hypot(event.clientX - press.x, event.clientY - press.y) > dragSlop;
+  }
 
   function setPointerFromEvent(e) {
     // When Pointer Lock is active (mouse-look), browsers can report unstable
@@ -65,6 +73,7 @@ export function installHudDesktopInputRuntime({
   function onPointerMove(e) {
     if (renderer.xr.isPresenting) return;
     if (_activePointerId != null && e.pointerId !== _activePointerId) return;
+    if (titlePress && moved(e, titlePress)) titlePress.moved = true;
     setPointerFromEvent(e);
     markDirty();
   }
@@ -89,6 +98,10 @@ export function installHudDesktopInputRuntime({
       return;
     }
     _activePointerId = e.pointerId;
+    const win = !titleGestureDisposed && e.button === 0 && e.isPrimary !== false && e.pointerType !== "touch"
+      ? getTitleDoubleClickWindow(hud.pointer.x, hud.pointer.y) : null;
+    titlePress = win ? { win, x: e.clientX, y: e.clientY, moved: false } : null;
+    if (!win) firstTitleClick = lastTitleClick = null;
     hud.pointer.down = true;
     hud.pointer.justPressed = true;
     markDirty();
@@ -104,6 +117,28 @@ export function installHudDesktopInputRuntime({
     hud.pointer.justReleased = true;
     markDirty();
     endDragResize();
+    const press = titlePress;
+    titlePress = null;
+    const releasedOver = e.type !== "pointercancel" && e.target === dom
+      && press && !press.moved && !moved(e, press)
+      ? getTitleDoubleClickWindow(hud.pointer.x, hud.pointer.y) : null;
+    if (!releasedOver || releasedOver !== press.win) firstTitleClick = lastTitleClick = null;
+    else {
+      firstTitleClick = lastTitleClick;
+      lastTitleClick = releasedOver;
+    }
+  }
+
+  function onDoubleClick(e) {
+    if (renderer.xr.isPresenting || e.button !== 0 || document.pointerLockElement === dom) return;
+    const win = firstTitleClick === lastTitleClick ? lastTitleClick : null;
+    firstTitleClick = lastTitleClick = null;
+    if (!win) return;
+    setPointerFromEvent(e);
+    if (!hud.pointer.active || !handleTitleDoubleClick(win, { x: hud.pointer.x, y: hud.pointer.y })) return;
+    hud.pointer.justPressed = false; // consume any deferred second press
+    e.preventDefault();
+    e.stopImmediatePropagation();
   }
 
   function onWheel(e) {
@@ -160,6 +195,7 @@ export function installHudDesktopInputRuntime({
     { passive: true }
   );
   dom.addEventListener("pointerdown", onPointerDown, { passive: false });
+  dom.addEventListener("dblclick", onDoubleClick, { capture: true });
 
   // WebXR requestSession must be called synchronously within a user gesture.
   // The normal HUD click path defers to the next rAF (via justPressed → stepInput),
@@ -217,5 +253,10 @@ export function installHudDesktopInputRuntime({
   window.addEventListener("pointerup", onPointerUp, { passive: true });
   window.addEventListener("pointercancel", onPointerUp, { passive: true });
 
-  return { setPointerFromEvent, setPointerFromMouseEvent: setPointerFromEvent };
+  return { setPointerFromEvent, setPointerFromMouseEvent: setPointerFromEvent,
+    disposeTitleDoubleClick() {
+      titleGestureDisposed = true;
+      titlePress = firstTitleClick = lastTitleClick = null;
+      dom.removeEventListener("dblclick", onDoubleClick, true);
+    } };
 }

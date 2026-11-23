@@ -134,3 +134,12 @@ export {
   qualityOptions,
   settingsCallbacksFromCalibration,
 } from "../hud-settings-window.js";
+
+export {
+  createHudAppearanceFormRow,
+  createHudAppearancePreference,
+  createHudAppearanceSettingsHotbarItem,
+  createHudAppearanceSettingsRows,
+  installHudAppearanceSettings,
+  resolveHudAppearancePreference,
+} from "../hud-appearance.js";

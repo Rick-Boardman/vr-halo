@@ -356,6 +356,30 @@ renderHudFrame({ renderer, scene, camera, dt, hudSystem, navigation });
 settings.afterHud();
 ```
 
+For opt-in Light/Dark appearance, use `createHudAppearancePreference()` and
+apply its current mode immediately, then subscribe to later changes. It
+defaults to System, observes OS changes, and can migrate older host storage
+keys. For existing Settings, add `createHudAppearanceFormRow(preference)` to
+`extraRows`, or put `createHudAppearanceSettingsRows(preference)` into an
+existing native line-based panel. If there is no Settings panel, use
+`installHudAppearanceSettings(hudSystem, { preference })` and wire the host's
+Settings launcher to `toggle()`. It opens only on demand. Passing a
+`keyboardShortcutTarget` enables Alt+Shift+S; Escape closes when the Settings
+radio group is focused. Dispose the shell, the host subscription, and the
+preference when tearing down the application.
+
+On desktop, double-click an ordinary panel's title bar to collapse it or
+restore its body. This is independent of the minimize button. For editable
+titles, pass `onTitleDoubleClick` to handle rename, or set `titleEditable: true`
+when the host already handles the gesture. Set
+`collapseOnTitleDoubleClick: false` to opt out. A drag or a click on a title
+bar button does not trigger the title-bar gesture.
+For automatic frame defaults on a layout pass, call `win.setLayoutCollapsed(value)`
+instead of assigning `win.collapsed` directly. It preserves a user's title-bar
+or minimize choice. Explicit host actions can still call `win.setCollapsed(value)`;
+`win.resetUserCollapsedChoice()` re-enables layout defaults when intentionally
+resetting the panel's placement.
+
 Desktop mouse and touch arrive through `hud.pointer`, the XR controller ray
 through `hud.vrPointer`. `prepare()` keeps the press edge and `afterHud()` reads
 the position the HUD update just refreshed. A press reaches the controls only
