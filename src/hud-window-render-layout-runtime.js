@@ -8,6 +8,7 @@
 // delegation to the render-list and content-dispatch runtimes.
 // -----------------------------------------------------------------
 
+import { createHudNativeControlTextures } from "./hud-native-control-textures.js";
 import { clamp } from "./scalar-math.js";
 import {
   HUD_OVERLAY_PADDING_PX,
@@ -68,6 +69,7 @@ const FOCUSED_TOP_RENDER_ORDER_BASE = 4000;
 export function createHudWindowRenderLayoutRuntime({
   hud,
   renderer,
+  THREE,
   windowObjectVisibilityRuntime,
   windowTextRenderOrderRuntime,
   setPlainTextMaybeTroika,
@@ -78,6 +80,7 @@ export function createHudWindowRenderLayoutRuntime({
   renderWindowContentFn,
 }) {
   const titleH = HUD_WINDOW_TITLE_HEIGHT_PX;
+  const controlTextures = createHudNativeControlTextures(THREE);
   const pad = HUD_OVERLAY_PADDING_PX;
 
   /**
@@ -360,9 +363,13 @@ export function createHudWindowRenderLayoutRuntime({
     }
 
     const controlSlotW = objs.nineSlice ? 18 : titleChrome.controlSlotW;
+    const chrome = !titleChrome.skinned ? appearance?.controlChrome : null;
+    const hovered = hud.overlay?.tooltip?._hoverId;
+    controlTextures.apply(objs.closeBtn, "close", chrome ? (hovered === key + ":close" ? chrome.hover : chrome.normal) : null);
+    controlTextures.apply(objs.minBtn, "min", chrome ? (hovered === key + ":min" ? chrome.hover : chrome.normal) : null);
     if (!titleChrome.skinned && Number.isFinite(appearance?.headerControl)) {
       const hovered = hud.overlay?.tooltip?._hoverId;
-      for (const [part, target] of [["closeBtn", "close"], ["minBtn", "min"], ["actionBtn", "action"]]) {
+      for (const [part, target] of (chrome ? [["actionBtn", "action"]] : [["closeBtn", "close"], ["minBtn", "min"], ["actionBtn", "action"]])) {
         const color = hovered === `${key}:${target}` ? (appearance.headerControlHover ?? appearance.headerControl) : appearance.headerControl;
         objs[part]?.material?.color?.setHex(color);
       }
@@ -580,11 +587,21 @@ export function createHudWindowRenderLayoutRuntime({
 
       const scrollParts = ["scrollTrack", "scrollThumb", "scrollUpBtn", "scrollDownBtn"];
       if (appearance) {
-        objs._appearanceScrollColors ??= scrollParts.map(part => objs[part]?.material?.color?.getHex());
-        for (const part of scrollParts) objs[part]?.material?.color?.setHex(part === "scrollTrack" ? appearance.track : appearance.thumb);
+        objs._appearanceScrollColors ??= scrollParts.map(part => {
+          const m = objs[part]?.material;
+          return m ? { color: m.color?.getHex(), map: m.map, opacity: m.opacity } : null;
+        });
+        for (const part of ["scrollTrack", "scrollThumb"]) {
+          const m = objs[part]?.material;
+          if (!m) continue;
+          m.color?.setHex(part === "scrollTrack" ? appearance.track : (hovered === key + ":scroll-thumb" ? chrome?.thumbHover ?? appearance.thumb : appearance.thumb));
+          if (chrome) { if (m.map) { m.map = null; m.needsUpdate = true; } m.opacity = 1; }
+        }
       } else if (objs._appearanceScrollColors) {
         scrollParts.forEach((part, i) => {
-          if (objs._appearanceScrollColors[i] != null) objs[part]?.material?.color?.setHex(objs._appearanceScrollColors[i]);
+          const m = objs[part]?.material, base = objs._appearanceScrollColors[i];
+          if (!m || !base) return;
+          m.color?.setHex(base.color); m.map = base.map; m.opacity = base.opacity; m.needsUpdate = true;
         });
         delete objs._appearanceScrollColors;
       }
@@ -594,9 +611,9 @@ export function createHudWindowRenderLayoutRuntime({
       const trackH = Math.max(0, h - contentTopY - HUD_SCROLLBAR_TRACK_TOP_INSET_PX - HUD_SCROLLBAR_TRACK_BOTTOM_INSET_PX - (nsC || 0));
       positionRect(
         objs.scrollTrack,
-        trackX,
+        trackX + (chrome ? 3 : 0),
         trackY,
-        appearance ? 8 : HUD_SCROLLBAR_TRACK_WIDTH_PX,
+        chrome ? 16 : appearance ? 8 : HUD_SCROLLBAR_TRACK_WIDTH_PX,
         trackH,
         HUD_Z_SURFACE_RECESSED + lift
       );
@@ -612,11 +629,13 @@ export function createHudWindowRenderLayoutRuntime({
 
       if (objs.scrollUpBtn) {
         positionRect(objs.scrollUpBtn, buttonX, upButtonY, buttonW, Math.max(0, arrowH), HUD_Z_SURFACE_BG + lift);
-        if (objs.scrollUpBtn.material) objs.scrollUpBtn.material.opacity = canUp ? 1 : 0.45;
+        controlTextures.apply(objs.scrollUpBtn, "up", chrome ? (canUp ? (hovered === key + ":scroll-up" ? chrome.hover : chrome.normal) : chrome.disabled) : null);
+        if (!chrome && objs.scrollUpBtn.material) objs.scrollUpBtn.material.opacity = canUp ? 1 : 0.45;
       }
       if (objs.scrollDownBtn) {
         positionRect(objs.scrollDownBtn, buttonX, downButtonY, buttonW, Math.max(0, arrowH), HUD_Z_SURFACE_BG + lift);
-        if (objs.scrollDownBtn.material) objs.scrollDownBtn.material.opacity = canDown ? 1 : 0.45;
+        controlTextures.apply(objs.scrollDownBtn, "down", chrome ? (canDown ? (hovered === key + ":scroll-down" ? chrome.hover : chrome.normal) : chrome.disabled) : null);
+        if (!chrome && objs.scrollDownBtn.material) objs.scrollDownBtn.material.opacity = canDown ? 1 : 0.45;
       }
 
       const denom = Math.max(1, totalLines);
@@ -629,9 +648,9 @@ export function createHudWindowRenderLayoutRuntime({
       const thumbY = thumbAreaTop + Math.round(frac * thumbMaxY);
       positionRect(
         objs.scrollThumb,
-        trackX + (appearance ? 2 : 3),
+        trackX + (chrome ? 6 : appearance ? 2 : 3),
         thumbY,
-        appearance ? 5 : Math.max(0, HUD_SCROLLBAR_TRACK_WIDTH_PX - 6),
+        chrome ? 10 : appearance ? 5 : Math.max(0, HUD_SCROLLBAR_TRACK_WIDTH_PX - 6),
         thumbH,
         HUD_Z_SURFACE_BG + lift
       );
@@ -702,5 +721,5 @@ export function createHudWindowRenderLayoutRuntime({
     });
   }
 
-  return { renderWindow };
+  return { renderWindow, dispose: controlTextures.dispose };
 }

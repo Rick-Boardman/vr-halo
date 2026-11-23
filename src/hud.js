@@ -1284,7 +1284,8 @@ export function createHudSystem(
       getStatusMode: () => _statusMode,
     });
 
-  const { renderWindow: _renderWindow } = createHudWindowRenderLayoutRuntime({
+  const { renderWindow: _renderWindow, dispose: _disposeWindowChrome } = createHudWindowRenderLayoutRuntime({
+    THREE,
     hud,
     renderer,
     windowObjectVisibilityRuntime: _windowObjectVisibilityRuntime,
@@ -1397,6 +1398,7 @@ export function createHudSystem(
     handleResize: () => _resizeRuntime.handleResize(),
     dispose: () => {
       _disposeListAppearance();
+      _disposeWindowChrome();
       _resizeRuntime.disposeAutoResize();
     },
     setNavigationHelpProfile: (profile) => _helpContentRuntime.setNavigationHelpProfile(profile),

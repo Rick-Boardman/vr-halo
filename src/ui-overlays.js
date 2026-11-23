@@ -723,6 +723,11 @@ export function createHudUiOverlays({
         const trackH = metrics?.trackH ?? Math.max(0, h - titleH - HUD_SCROLLBAR_RESERVED_WIDTH_PX);
         if (rectContains(trackX, trackY, HUD_SCROLLBAR_TRACK_WIDTH_PX, trackH, pointer.x, pointer.y)) {
           hoverId = `${key}:scroll`;
+          if (metrics && w.appearanceTokens?.controlChrome) {
+            if (pointer.y >= metrics.upButtonY && pointer.y <= metrics.upButtonY + metrics.arrowH) hoverId += "-up";
+            else if (pointer.y >= metrics.downButtonY && pointer.y <= metrics.downButtonY + metrics.arrowH) hoverId += "-down";
+            else if (pointer.y >= metrics.thumbY && pointer.y <= metrics.thumbY + metrics.thumbH) hoverId += "-thumb";
+          }
           hoverText = "Scroll";
           break;
         }
@@ -797,6 +802,7 @@ export function createHudUiOverlays({
 
     if (hoverId !== tip._hoverId) {
       tip._hoverId = hoverId;
+      if (hud.ui?.theme?.contentTokens?.controlChrome) markDirty();
       tip._hoverVrZ = hoverVrZ;
       tip._timer = 0;
       if (tip.visible) {
