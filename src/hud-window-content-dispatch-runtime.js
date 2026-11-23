@@ -66,6 +66,8 @@ const HOTBAR_COMPACT_BADGE_HEIGHT_PX = 26;
 const HOTBAR_REGULAR_BADGE_HEIGHT_PX = 32;
 const HOTBAR_COMPACT_BADGE_MIN_WIDTH_PX = 84;
 const HOTBAR_REGULAR_BADGE_MIN_WIDTH_PX = 116;
+const HOTBAR_DOCK_BADGE_PADDING_PX = 12;
+const HOTBAR_DOCK_BADGE_GUTTER_MARGIN_PX = 6;
 const HOTBAR_SEPARATOR_LINE_WIDTH_PX = 2;
 const HOTBAR_SEPARATOR_LINE_MIN_HEIGHT_PX = 22;
 const HOTBAR_SEPARATOR_LINE_MARGIN_PX = 7;
@@ -668,7 +670,8 @@ export function createHudWindowContentDispatchRuntime({
     }
 
     if (statusBg) {
-      const showStatus = !!compactStatusText;
+      const dockMaxWidth = rightGutter - HOTBAR_DOCK_BADGE_GUTTER_MARGIN_PX * 2;
+      const showStatus = !!compactStatusText && (!dock || dockMaxWidth >= HOTBAR_DOCK_BADGE_PADDING_PX * 2 + 18);
       statusBg.visible = showStatus;
       if (showStatus) {
         const badgeDot = compactChrome
@@ -677,10 +680,24 @@ export function createHudWindowContentDispatchRuntime({
         const badgeTextW = estimateTextWidthPx(compactStatusText, badgeDot, HUD_TEXT_ESTIMATE_GAP_PX);
         const badgeMinW = compactChrome ? HOTBAR_COMPACT_BADGE_MIN_WIDTH_PX : HOTBAR_REGULAR_BADGE_MIN_WIDTH_PX;
         const badgeMaxW = Math.max(badgeMinW, rightGutter - (compactChrome ? 10 : 18));
-        const badgeW = clamp(badgeTextW + (compactChrome ? 22 : 30), badgeMinW, badgeMaxW);
+        const badgeW = dock
+          ? clamp(Math.ceil(badgeTextW * 1.16 + HOTBAR_DOCK_BADGE_PADDING_PX * 2), Math.min(badgeMinW, dockMaxWidth), dockMaxWidth)
+          : clamp(badgeTextW + (compactChrome ? 22 : 30), badgeMinW, badgeMaxW);
         const badgeH = dock ? Math.min(win.h-12,26) : (compactChrome ? HOTBAR_COMPACT_BADGE_HEIGHT_PX : HOTBAR_REGULAR_BADGE_HEIGHT_PX);
         const badgeX = win.x + win.w - rightGutter + Math.max(0, Math.floor((rightGutter - badgeW) / 2));
-        const badgeY = win.y + Math.floor((win.h - badgeH) / 2);
+        const badgeY = win.y + (dock ? (win.h - badgeH) / 2 : Math.floor((win.h - badgeH) / 2));
+        const paddedTextWidth = Math.max(1, badgeW - HOTBAR_DOCK_BADGE_PADDING_PX * 2);
+        let statusLabel = compactStatusText;
+        // Keep normal statuses intact; only labels that are genuinely too
+        // long for the dock hint with an ellipsis, then use actual glyphs to
+        // guarantee the final padding instead of relying on the estimate.
+        if (dock && badgeTextW > paddedTextWidth * 1.20) {
+          const chars = Array.from(compactStatusText);
+          while (chars.length > 1 && estimateTextWidthPx(chars.join("").trimEnd() + "...", badgeDot, HUD_TEXT_ESTIMATE_GAP_PX) > paddedTextWidth * 1.20) {
+            chars.pop();
+          }
+          statusLabel = chars.join("").trimEnd() + "...";
+        }
         if (statusBg.material?.color) {
           statusBg.material.color.setHex(statusBgColor);
         }
@@ -696,9 +713,12 @@ export function createHudWindowContentDispatchRuntime({
         positionRect(statusBg, badgeX, badgeY, badgeW, badgeH, HUD_Z_SURFACE_FG + lift);
         setPlainTextMaybeTroika({
           pixel: statusTextObj,
-          text: compactStatusText,
-          x: badgeX + Math.max(0, Math.floor((badgeW - badgeTextW) / 2)),
-          y: badgeY + Math.max(0, Math.floor((badgeH - 7 * badgeDot) / 2)) - (dock ? 2 : 0),
+          text: statusLabel,
+          x: dock ? badgeX + badgeW / 2 : badgeX + Math.max(0, Math.floor((badgeW - badgeTextW) / 2)),
+          y: badgeY + Math.max(0, Math.floor((badgeH - 7 * badgeDot) / 2)),
+          inkCenterX: dock ? badgeX + badgeW / 2 : null,
+          inkCenterY: dock ? badgeY + badgeH / 2 : null,
+          inkFitWidth: dock ? paddedTextWidth : null,
           dot: badgeDot,
           color: statusTextColor,
           fontWeight: dock ? "bold" : null,

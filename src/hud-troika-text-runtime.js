@@ -267,7 +267,9 @@ export function createHudTroikaTextRuntime({
     outlineColor = 0x000000,
     outlineOpacity = 0,
     fontWeight = null,
+    inkCenterX = null,
     inkCenterY = null,
+    inkFitWidth = null,
     ellipsis = false,
   }) {
     if (!pixel) return;
@@ -305,7 +307,9 @@ export function createHudTroikaTextRuntime({
       outlineColor,
       outlineOpacity,
       fontWeight,
+      inkCenterX,
       inkCenterY,
+      inkFitWidth,
       ellipsis,
     });
   }
@@ -897,15 +901,22 @@ export function createHudTroikaTextRuntime({
         if (!this._inkCenter) return;
         const info = this._textMesh.textRenderInfo;
         if (!info || (info.parameters?.text != null && info.parameters.text !== this._inkCenter.text)) return;
-        const [, bottom, , top] = info.visibleBounds ?? [];
-        if (Number.isFinite(bottom) && Number.isFinite(top)) {
-          this._textMesh.position.y = this._inkCenter.y - (bottom + top) / 2;
-          // Layout may otherwise be idle when the asynchronous font metrics land.
-          if (invalidate) hud._dirty = true;
+        const [left, bottom, right, top] = info.visibleBounds ?? [];
+        const { x, y, width } = this._inkCenter;
+        if (Number.isFinite(x) && Number.isFinite(left) && Number.isFinite(right)) {
+          const inkWidth = right - left;
+          const scaleX = Number.isFinite(width) && inkWidth > width ? width / inkWidth : 1;
+          this._textMesh.scale.x = scaleX;
+          this._textMesh.position.x = x - (left + right) * scaleX / 2;
         }
+        if (Number.isFinite(y) && Number.isFinite(bottom) && Number.isFinite(top)) {
+          this._textMesh.position.y = y - (bottom + top) / 2;
+        }
+        // Layout may otherwise be idle when the asynchronous font metrics land.
+        if (invalidate) hud._dirty = true;
       }
 
-      setText({ text, x, y, dot = 4, gap = HUD_TEXT_ESTIMATE_GAP_PX, color, maxWidth = null, colorRanges = null, truncateSingleLine = true, outlineWidth = 0, outlineColor = 0x000000, outlineOpacity = 0, fontWeight = null, inkCenterY = null, ellipsis = false }) {
+      setText({ text, x, y, dot = 4, gap = HUD_TEXT_ESTIMATE_GAP_PX, color, maxWidth = null, colorRanges = null, truncateSingleLine = true, outlineWidth = 0, outlineColor = 0x000000, outlineOpacity = 0, fontWeight = null, inkCenterX = null, inkCenterY = null, inkFitWidth = null, ellipsis = false }) {
       if (typeof color === "number") this.setColor(color);
       try {
         const ow = Number(outlineWidth);
@@ -1149,8 +1160,14 @@ export function createHudTroikaTextRuntime({
           ? finalText.slice(0, maxChars - 1).trimEnd() + "…"
           : finalText.slice(0, maxChars);
       }
-      this._inkCenter = Number.isFinite(inkCenterY) && finalText
-        ? { y:this._textMesh.position.y + y - inkCenterY - topNudge, text:finalText }
+      if (this._inkCenter && Number.isFinite(this._inkCenter.x)) this._textMesh.scale.x = 1;
+      this._inkCenter = finalText && (Number.isFinite(inkCenterX) || Number.isFinite(inkCenterY))
+        ? {
+          x: Number.isFinite(inkCenterX) ? this._textMesh.position.x - x + inkCenterX : null,
+          y: Number.isFinite(inkCenterY) ? this._textMesh.position.y + y - inkCenterY - topNudge : null,
+          width: inkFitWidth,
+          text: finalText,
+        }
         : null;
       this._applyInkCenter();
 
