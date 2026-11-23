@@ -120,7 +120,8 @@ export function createHudWindowRenderLayoutRuntime({
     }
 
     const labelDot = getHudGlyphDotSizePx(renderer);
-    const bodyDot = labelDot * (win.appearanceTokens ? 1.08 : 1);
+    const appearance = win.appearanceTokens;
+    const bodyDot = labelDot * (appearance ? 1.08 : 1);
     const titleDot = labelDot * HUD_TEXT_HEADER_FONT_SIZE_MULTIPLIER;
     const titleChrome = getHudWindowTitleChrome(win, objs, effectiveTitleH);
     const controlRects = getHudWindowControlRects(win, objs, effectiveTitleH);
@@ -327,7 +328,13 @@ export function createHudWindowRenderLayoutRuntime({
     if (objs.bevelBottom) objs.bevelBottom.visible = false;
     if (objs.bevelRight) objs.bevelRight.visible = false;
     if (objs.titleDivider) {
-      objs.titleDivider.visible = false;
+      const divider = appearance?.headerDivider;
+      objs.titleDivider.visible = !isHotbar && !titleChrome.skinned && !win.collapsed && effectiveTitleH > 0 && Number.isFinite(divider);
+      if (objs.titleDivider.visible) {
+        objs.titleDivider.material?.color?.setHex(divider);
+        if (objs.titleDivider.material) objs.titleDivider.material.opacity = 1;
+        positionRect(objs.titleDivider, titleChrome.x, titleChrome.y + titleChrome.h - 1, titleChrome.w, 2, 0.00220 + lift);
+      }
     }
 
     if (Array.isArray(objs.titleDots)) {
@@ -353,6 +360,13 @@ export function createHudWindowRenderLayoutRuntime({
     }
 
     const controlSlotW = objs.nineSlice ? 18 : titleChrome.controlSlotW;
+    if (!titleChrome.skinned && Number.isFinite(appearance?.headerControl)) {
+      const hovered = hud.overlay?.tooltip?._hoverId;
+      for (const [part, target] of [["closeBtn", "close"], ["minBtn", "min"], ["actionBtn", "action"]]) {
+        const color = hovered === `${key}:${target}` ? (appearance.headerControlHover ?? appearance.headerControl) : appearance.headerControl;
+        objs[part]?.material?.color?.setHex(color);
+      }
+    }
 
     if (objs.closeBtn) {
       const r = controlRects.close;
@@ -540,7 +554,6 @@ export function createHudWindowRenderLayoutRuntime({
     // For 9-slice windows the frame border is outside the content area.
     // Content rect is the inner region of the 9-slice; normal pad applies inside.
     const nsC = objs.nineSlice ? (objs.nineSlice.cornerSize || 24) : 0;
-    const appearance = win.appearanceTokens;
     const inset = appearance ? pad + 4 : pad;
     const cx = win.x + nsC + inset;
     const cy = win.y + (nsC || effectiveTitleH) + inset;
