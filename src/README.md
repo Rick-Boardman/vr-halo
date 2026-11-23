@@ -356,6 +356,18 @@ renderHudFrame({ renderer, scene, camera, dt, hudSystem, navigation });
 settings.afterHud();
 ```
 
+For opt-in Light/Dark appearance, use `createHudAppearancePreference()` and
+apply its current mode immediately, then subscribe to later changes. It
+defaults to System, observes OS changes, and can migrate older host storage
+keys. For existing Settings, add `createHudAppearanceFormRow(preference)` to
+`extraRows`, or put `createHudAppearanceSettingsRows(preference)` into an
+existing native line-based panel. If there is no Settings panel, use
+`installHudAppearanceSettings(hudSystem, { preference })` and wire the host's
+Settings launcher to `toggle()`. It opens only on demand. Passing a
+`keyboardShortcutTarget` enables Alt+Shift+S; Escape closes when the Settings
+radio group is focused. Dispose the shell, the host subscription, and the
+preference when tearing down the application.
+
 Desktop mouse and touch arrive through `hud.pointer`, the XR controller ray
 through `hud.vrPointer`. `prepare()` keeps the press edge and `afterHud()` reads
 the position the HUD update just refreshed. A press reaches the controls only
