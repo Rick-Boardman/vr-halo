@@ -1259,7 +1259,8 @@ export function createHudSystem(
     restoreAllHidden: () => _windowVisibilityRuntime.restoreAllHidden(),
   });
 
-  const { renderList: _renderList } = createHudRenderListRuntime({
+  const { renderList: _renderList, dispose: _disposeListAppearance } = createHudRenderListRuntime({
+    THREE,
     clamp,
     wrapEntriesToLines,
     parseHexColor,
@@ -1395,6 +1396,7 @@ export function createHudSystem(
     renderDebugOverlay: _debugOverlayRuntime.renderDebugOverlay,
     handleResize: () => _resizeRuntime.handleResize(),
     dispose: () => {
+      _disposeListAppearance();
       _resizeRuntime.disposeAutoResize();
     },
     setNavigationHelpProfile: (profile) => _helpContentRuntime.setNavigationHelpProfile(profile),

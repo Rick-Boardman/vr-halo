@@ -587,10 +587,11 @@ export function createHudWindowContentDispatchRuntime({
       : -1;
     const stone = getHudStoneSkinChrome(hud);
     const headerTitle = String(hud.ui?.data?.hotbarHeaderTitle ?? "").trim();
-    const headerColor = Number(hud.ui?.data?.hotbarHeaderColor ?? (stone?.parchment ?? HUD_TEXT_INFO_COLOR)) >>> 0;
+    const appearance = win.panelTheme === false ? null : (win.appearanceTokens ?? hud.ui?.theme?.contentTokens);
+    const headerColor = appearance?.hotbarTitle ?? appearance?.text ?? Number(hud.ui?.data?.hotbarHeaderColor ?? (stone?.parchment ?? HUD_TEXT_INFO_COLOR)) >>> 0;
     const statusText = String(hud.ui?.data?.hotbarStatusText ?? "").trim();
-    const statusTextColor = Number(hud.ui?.data?.hotbarStatusTextColor ?? (stone?.ink ?? 0x18202a)) >>> 0;
-    const statusBgColor = Number(hud.ui?.data?.hotbarStatusBgColor ?? (stone?.gold ?? 0xa7dfb5)) >>> 0;
+    const statusTextColor = appearance ? 0xffffff : Number(hud.ui?.data?.hotbarStatusTextColor ?? (stone?.ink ?? 0x18202a)) >>> 0;
+    const statusBgColor = appearance ? 0x34485c : Number(hud.ui?.data?.hotbarStatusBgColor ?? (stone?.gold ?? 0xa7dfb5)) >>> 0;
 
     const hotbarRoBase = Number.isFinite(objs?._renderOrderBase)
       ? Math.floor(objs._renderOrderBase)
@@ -618,7 +619,7 @@ export function createHudWindowContentDispatchRuntime({
       ? hud.objects.hotbarGripDots
       : [];
     const titleDot = compactChrome
-      ? Math.max(HOTBAR_TITLE_MIN_DOT_PX, labelDot)
+      ? Math.max(HOTBAR_TITLE_MIN_DOT_PX, labelDot + (appearance ? 0.50 : 0))
       : Math.max(HOTBAR_TITLE_REGULAR_DOT_PX, labelDot + 1);
     const titleTextH = 7 * titleDot;
     const titleY = win.y + Math.max(0, Math.floor((win.h - titleTextH) / 2));
@@ -641,6 +642,7 @@ export function createHudWindowContentDispatchRuntime({
       const showDot = !!headerTitle;
       dot.visible = showDot;
       if (!showDot) continue;
+      if (appearance) dot.material?.color?.setHex(appearance.fieldBorder);
       const column = index % 2;
       const row = Math.floor(index / 2);
       setMeshRenderOrder(dot, hotbarRoBase + HUD_RENDER_ORDER_TITLE_DIVIDER_OFFSET);
@@ -744,10 +746,11 @@ export function createHudWindowContentDispatchRuntime({
         const baseColor = slotMap
           ? 0xffffff
           : Number(isActive ? (item?.activeBgColor ?? item?.bgColor ?? activeBg) : (item?.bgColor ?? idleBg)) >>> 0;
-        bg.material.color.setHex(baseColor);
+        const danger = isActive && ((item?.activeBgColor ?? 0) >> 16 & 255) > ((item?.activeBgColor ?? 0) >> 8 & 255) * 1.6;
+        bg.material.color.setHex(appearance && !slotMap ? (danger ? 0x7f2f35 : isActive ? appearance.hotbarActive : appearance.hotbarFill) : baseColor);
       }
       if (bg?.material) {
-        bg.material.opacity = Number.isFinite(item?.bgOpacity)
+        bg.material.opacity = appearance ? 1 : Number.isFinite(item?.bgOpacity)
           ? Number(item.bgOpacity)
           : (isActive ? 0.98 : 0.94);
       }
@@ -755,10 +758,13 @@ export function createHudWindowContentDispatchRuntime({
         const stone = getHudStoneSkinChrome(hud);
         const idleOutline = stone?.gold ?? HUD_SURFACE_ACCENT_COLOR;
         const activeOutline = stone?.goldBright ?? HUD_PRIMARY_HIGHLIGHT_COLOR;
-        outline.material.color.setHex(Number(isActive ? (item?.activeOutlineColor ?? activeOutline) : (item?.outlineColor ?? idleOutline)) >>> 0);
+        const danger = isActive && ((item?.activeBgColor ?? 0) >> 16 & 255) > ((item?.activeBgColor ?? 0) >> 8 & 255) * 1.6;
+        const tint = danger ? 0x7f2f35 : isActive ? appearance?.hotbarActive : appearance?.hotbarFill;
+        outline.material.color.setHex(appearance ? (slotMap ? tint : appearance.fieldBorder)
+          : Number(isActive ? (item?.activeOutlineColor ?? activeOutline) : (item?.outlineColor ?? idleOutline)) >>> 0);
       }
       if (outline?.material) {
-        outline.material.opacity = Number.isFinite(item?.outlineOpacity)
+        outline.material.opacity = appearance ? 1 : Number.isFinite(item?.outlineOpacity)
           ? Number(item.outlineOpacity)
           : (isActive ? 0.98 : 0.62);
       }
@@ -834,7 +840,7 @@ export function createHudWindowContentDispatchRuntime({
           x: dx,
           y: numY,
           dot,
-          color: Number(isActive ? (item?.activeNumberColor ?? item?.numberColor ?? (getHudStoneSkinChrome(hud)?.parchment ?? HUD_TEXT_BRIGHT_COLOR)) : (item?.numberColor ?? (getHudStoneSkinChrome(hud)?.parchment ?? HUD_TEXT_DEFAULT_COLOR))) >>> 0,
+          color: appearance ? 0xffffff : Number(isActive ? (item?.activeNumberColor ?? item?.numberColor ?? (getHudStoneSkinChrome(hud)?.parchment ?? HUD_TEXT_BRIGHT_COLOR)) : (item?.numberColor ?? (getHudStoneSkinChrome(hud)?.parchment ?? HUD_TEXT_DEFAULT_COLOR))) >>> 0,
           zLift: lift,
           renderOrder: hotbarRoBase + HUD_RENDER_ORDER_TEXT_OFFSET,
         });
@@ -928,7 +934,7 @@ export function createHudWindowContentDispatchRuntime({
           x: ix,
           y: startY + Math.round((slot - textH) / 2),
           dot: textDot,
-          color: Number(isActive ? (item?.activeTextColor ?? item?.textColor ?? HUD_TEXT_BRIGHT_COLOR) : (item?.textColor ?? HUD_TEXT_DEFAULT_COLOR)) >>> 0,
+          color: appearance ? 0xffffff : Number(isActive ? (item?.activeTextColor ?? item?.textColor ?? HUD_TEXT_BRIGHT_COLOR) : (item?.textColor ?? HUD_TEXT_DEFAULT_COLOR)) >>> 0,
           zLift: lift,
           renderOrder: hotbarRoBase + HUD_RENDER_ORDER_COLOR_LAYER_OFFSET,
         });

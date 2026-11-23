@@ -44,7 +44,36 @@ export function createHudRenderListRuntime({
   positionRect,
   getSelectionRects,
   makeRect,
+  THREE,
 }) {
+  const controlTextures = new Map();
+  const css = color => `#${color.toString(16).padStart(6, "0")}`;
+  function applyControlSurface(mesh, appearance, fill, w, h, focused) {
+    const mat = mesh?.material;
+    if (!mat) return;
+    let texture = null;
+    const border = focused ? appearance?.focus : appearance?.fieldBorder;
+    if (THREE?.CanvasTexture && typeof document !== "undefined" && Number.isFinite(border) && Number.isFinite(fill)) {
+      const height = 28, width = Math.max(32, Math.min(384, Math.round(w / h * height / 8) * 8));
+      const key = [fill, border, width, !!focused].join(":");
+      texture = controlTextures.get(key);
+      if (!texture) {
+        const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const line = focused ? 3 : 2;
+          ctx.fillStyle = css(border); ctx.fillRect(0, 0, width, height);
+          ctx.fillStyle = css(fill); ctx.fillRect(line, line, width - line * 2, height - line * 2);
+          texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+          texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
+          if (controlTextures.size < 192) controlTextures.set(key, texture);
+          else { texture.dispose(); texture = null; }
+        }
+      }
+    }
+    if (mat.map !== texture) { mat.map = texture; mat.needsUpdate = true; }
+    if (texture) mat.color?.setHex(0xffffff);
+  }
 
   /**
    * Render a scrollable list of text entries into a HUD window.
@@ -166,7 +195,7 @@ export function createHudRenderListRuntime({
     const effectiveCw = Math.max(0, Number(cw) || 0);
     const effectiveCh = Math.max(0, Number(ch) || 0);
     const lineH = 12 * labelDot;
-    const footerActions = normalizeFooterActions(win?._footerEntries);
+    const footerActions = normalizeFooterActions(win?._footerEntries, win.appearanceTokens);
     let requestedFooterH = 0;
     for (const button of footerActions) {
       if (Number.isFinite(button.heightPx)) {
@@ -662,7 +691,7 @@ export function createHudRenderListRuntime({
         const roBase = Number.isFinite(objs?._renderOrderBase)
           ? Math.floor(objs._renderOrderBase)
           : 0;
-        const buttonDot = Math.max(1, labelDot * 0.85);
+        const buttonDot = Math.max(1, labelDot * (appearance ? 1.03 : 0.85));
         for (let rowIndex = 0; rowIndex < objs.actionButtonRects.length; rowIndex += 1) {
           const mesh = objs.actionButtonRects[rowIndex];
           const icon = objs.actionButtonIcons?.[rowIndex] ?? null;
@@ -696,6 +725,9 @@ export function createHudRenderListRuntime({
             // no-op
           }
 
+          const focused = win._textCaret?.target === "actionButton" && win._textCaret?.row === row.index + win.scrollTop && win._textCaret.visible ||
+            win._textSelection?.target === "actionButton" && win._textSelection?.startRow === row.index + win.scrollTop && win._textSelection.visible;
+          applyControlSurface(mesh, appearance, button.bgColor, buttonW, buttonH, focused);
           positionRect(mesh, buttonX, buttonY, buttonW, buttonH, 0.00345 + lift);
           mesh.visible = true;
 
@@ -729,7 +761,7 @@ export function createHudRenderListRuntime({
               const textMaxWidth = textInsetPx != null
                 ? Math.max(6, buttonW - textInsetPx - 4 - Math.max(0, Number(button._trailingIconReservedWidth) || 0))
                 : Math.max(6, buttonW - 8 - Math.max(0, Number(button._trailingIconReservedWidth) || 0));
-              label.setRenderOrder(roBase + 20);
+              label.setRenderOrder(roBase + (appearance ? 24 : 20));
               label.setText({
                 text: String(button.text ?? ""),
                 x: textX,
@@ -822,6 +854,7 @@ export function createHudRenderListRuntime({
             // no-op
           }
 
+          applyControlSurface(mesh, appearance, button.bgColor, buttonW, footerButtonH, false);
           positionRect(mesh, nextX, buttonY, buttonW, footerButtonH, 0.00345 + lift);
           mesh.visible = true;
 
@@ -925,7 +958,7 @@ export function createHudRenderListRuntime({
         const lo = Math.min(a, b);
         const hi = Math.max(a, b);
         if (hi > lo) {
-          const tc = parseHexColor(sel.textColor, 0xffffff);
+          const tc = appearance?.selectionText ?? parseHexColor(sel.textColor, 0xffffff);
           selectionColorRanges = [{ start: lo, end: hi, color: tc }];
         }
       }
@@ -1042,15 +1075,15 @@ export function createHudRenderListRuntime({
             const want = Array.isArray(rects) && rects.length ? rects.length : Array.isArray(fallback) ? fallback.length : 0;
             ensureCount(want);
 
-            const col = parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
-            const op = sel.opacity != null ? Number(sel.opacity) : 0.8;
+            const col = appearance?.selection ?? parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
+            const op = appearance?.selectionOpacity ?? (sel.opacity != null ? Number(sel.opacity) : 0.8);
 
             for (let i = 0; i < objs.selectionRects.length; i++) {
               const mesh = objs.selectionRects[i];
               if (!mesh) continue;
               try {
                 const roBase = Number(objs?._renderOrderBase);
-                if (Number.isFinite(roBase)) mesh.renderOrder = roBase + 29;
+                if (Number.isFinite(roBase)) mesh.renderOrder = roBase + (appearance ? 22 : 29);
               } catch {
                 // no-op
               }
@@ -1197,8 +1230,8 @@ export function createHudRenderListRuntime({
           const want = Array.isArray(rects) && rects.length ? rects.length : Array.isArray(fallback) ? fallback.length : 0;
           ensureCount(want);
 
-          const col = parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
-          const op = sel.opacity != null ? Number(sel.opacity) : 0.8;
+          const col = appearance?.selection ?? parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
+          const op = appearance?.selectionOpacity ?? (sel.opacity != null ? Number(sel.opacity) : 0.8);
 
           for (let i = 0; i < objs.selectionRects.length; i++) {
             const mesh = objs.selectionRects[i];
@@ -1309,8 +1342,8 @@ export function createHudRenderListRuntime({
                 h0 = Math.max(1, top - bottom);
               }
             }
-            if (objs.caret.material?.color && caret.color != null) {
-              objs.caret.material.color.setHex(Number(caret.color) >>> 0);
+            if (objs.caret.material?.color && (appearance?.caret != null || caret.color != null)) {
+              objs.caret.material.color.setHex(appearance?.caret ?? (Number(caret.color) >>> 0));
             }
             positionRect(objs.caret, x0, y0, cwPx, h0, 0.00415 + lift);
             objs.caret.visible = true;
@@ -1396,8 +1429,8 @@ export function createHudRenderListRuntime({
               }
             }
 
-            if (objs.caret.material?.color && caret.color != null) {
-              objs.caret.material.color.setHex(Number(caret.color) >>> 0);
+            if (objs.caret.material?.color && (appearance?.caret != null || caret.color != null)) {
+              objs.caret.material.color.setHex(appearance?.caret ?? (Number(caret.color) >>> 0));
             }
             positionRect(objs.caret, x0, y0, cwPx, h0, 0.00415 + lift);
             objs.caret.visible = true;
@@ -1492,8 +1525,8 @@ export function createHudRenderListRuntime({
             }
           }
 
-          if (objs.caret.material?.color && caret.color != null) {
-            objs.caret.material.color.setHex(Number(caret.color) >>> 0);
+          if (objs.caret.material?.color && (appearance?.caret != null || caret.color != null)) {
+            objs.caret.material.color.setHex(appearance?.caret ?? (Number(caret.color) >>> 0));
           }
           positionRect(objs.caret, x0, y0, cwPx, h0, 0.00415 + lift);
           objs.caret.visible = true;
@@ -1518,13 +1551,14 @@ export function createHudRenderListRuntime({
     }
   }
 
-  return { renderList };
+  return { renderList, dispose: () => { for (const texture of controlTextures.values()) texture.dispose(); controlTextures.clear(); } };
 }
 
-function normalizeFooterActions(entries) {
+function normalizeFooterActions(entries, appearance) {
   if (!Array.isArray(entries)) return [];
   return entries
-    .map((entry) => {
+    .map((raw) => {
+      const entry = styleHudListEntry(raw, appearance);
       if (!entry || typeof entry !== "object") return null;
       if (typeof entry.actionButtonOnClick !== "function") return null;
       const text = typeof entry.actionButtonText === "string" ? entry.actionButtonText.trim() : "";

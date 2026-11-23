@@ -81,3 +81,8 @@ Use opaque numeric RGB colors for `surface`, `text`, `row`, `selectedRow`,
 `field`, `fieldText`, `accent`, `accentText`, `track`, and `thumb`. Pass a
 complete palette. This opt-in retains the source rows and actions and adjusts
 their displayed colors for contrast. Use high-contrast palette pairs.
+
+Tokens may also specify `fieldBorder` and `focus` for button outlines;
+`selection`, `selectionOpacity`, `selectionText`, and `caret` for text editing;
+and `disabledField`, `disabledText`, `hotbarFill`, and `hotbarActive` for
+controls. Themed controls keep their layout and pointer targets.
