@@ -174,6 +174,39 @@ export function createHudClickRuntime({
     return keys;
   }
 
+  function getTitleDoubleClickWindow(px, py) {
+    if (hud.overlay?.contextMenu?.open || getDragMode?.()) return null;
+    for (const key of getWindowHitTestOrder()) {
+      const win = hud.ui.windows[key];
+      const h = win.collapsed ? titleHeightPx : win.h;
+      if (!rectContains(win.x, win.y, win.w, h, px, py)) continue;
+      // A higher window owns the whole hit, even if it cannot collapse.
+      if (key === "hotbar" || key === "xr" || win.dragging || win.resizing ||
+          ((!String(win.title ?? "").trim() || win.collapseOnTitleDoubleClick === false) && !win.onTitleDoubleClick) ||
+          (win.titleEditable && !win.onTitleDoubleClick)) return null;
+      const controls = getHudWindowControlRects(win, hud.objects?.windows?.[key], titleHeightPx);
+      if (!hitControlRect(controls.chrome, px, py, 0, rectContainsSlop)) return null;
+      if (["close", "min", "action", "copy", "resize"].some(name =>
+        hitControlRect(controls[name], px, py, 0, rectContainsSlop))) return null;
+      return win;
+    }
+    return null;
+  }
+
+  function toggleCollapsed(win) {
+    if (typeof win.toggleCollapsed === "function") win.toggleCollapsed();
+    else if (typeof win.setCollapsed === "function") win.setCollapsed(!win.collapsed);
+    else win.collapsed = !win.collapsed;
+    markDirty();
+  }
+
+  function handleTitleDoubleClick(win, pointer) {
+    if (getTitleDoubleClickWindow(pointer.x, pointer.y) !== win) return false;
+    if (win.onTitleDoubleClick) win.onTitleDoubleClick({ windowKey: win.key, window: win, pointer });
+    else toggleCollapsed(win);
+    return true;
+  }
+
   function handleClick(pointer) {
     const px = pointer.x;
     const py = pointer.y;
@@ -274,10 +307,7 @@ export function createHudClickRuntime({
 
       if (w.minimizable) {
         if (hitControlRect(controls.min, px, py, vrBtnSlop, rectContainsSlop)) {
-          if (typeof w.toggleCollapsed === "function") w.toggleCollapsed();
-          else if (typeof w.setCollapsed === "function") w.setCollapsed(!w.collapsed);
-          else w.collapsed = !w.collapsed;
-          markDirty();
+          toggleCollapsed(w);
           return;
         }
       }
@@ -624,5 +654,7 @@ export function createHudClickRuntime({
 
   return {
     handleClick,
+    getTitleDoubleClickWindow,
+    handleTitleDoubleClick,
   };
 }

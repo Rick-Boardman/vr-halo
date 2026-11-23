@@ -368,6 +368,13 @@ Settings launcher to `toggle()`. It opens only on demand. Passing a
 radio group is focused. Dispose the shell, the host subscription, and the
 preference when tearing down the application.
 
+On desktop, double-click an ordinary panel's title bar to collapse it or
+restore its body. This is independent of the minimize button. For editable
+titles, pass `onTitleDoubleClick` to handle rename, or set `titleEditable: true`
+when the host already handles the gesture. Set
+`collapseOnTitleDoubleClick: false` to opt out. A drag or a click on a title
+bar button does not trigger the title-bar gesture.
+
 Desktop mouse and touch arrive through `hud.pointer`, the XR controller ray
 through `hud.vrPointer`. `prepare()` keeps the press edge and `afterHud()` reads
 the position the HUD update just refreshed. A press reaches the controls only

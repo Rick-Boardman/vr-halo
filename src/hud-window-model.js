@@ -51,6 +51,9 @@ export class HudWindowBase {
       scrollMode = "top",
       maxLines = null,
       onClose = null,
+      titleEditable = false,
+      onTitleDoubleClick = null,
+      collapseOnTitleDoubleClick = true,
       listStyle = null,
       panelBgColor = HUD_SURFACE_PANEL_BG_COLOR,
       panelBgOpacity = HUD_SURFACE_PANEL_BG_OPACITY,
@@ -87,6 +90,9 @@ export class HudWindowBase {
     this.scrollMode = scrollMode;
     this.maxLines = maxLines;
     this.onClose = typeof onClose === "function" ? onClose : null;
+    this.titleEditable = Boolean(titleEditable);
+    this.onTitleDoubleClick = typeof onTitleDoubleClick === "function" ? onTitleDoubleClick : null;
+    this.collapseOnTitleDoubleClick = Boolean(collapseOnTitleDoubleClick);
     this.listStyle = listStyle == null ? null : String(listStyle);
     this.panelBgColor = panelBgColor;
     this.panelBgOpacity = panelBgOpacity;

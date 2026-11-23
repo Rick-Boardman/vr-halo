@@ -702,7 +702,7 @@ export function createHudSystem(
   // ------------------------------------------------------------
 
   const dom = renderer.domElement;
-  installHudDesktopInputRuntime({
+  const _desktopInputRuntime = installHudDesktopInputRuntime({
     renderer,
     dom,
     hud,
@@ -716,6 +716,8 @@ export function createHudSystem(
     enterVR,
     exitVR,
     enableContextMenu: enableDesktopContextMenu !== false,
+    getTitleDoubleClickWindow: (x, y) => _clickRuntime.getTitleDoubleClickWindow(x, y),
+    handleTitleDoubleClick: (win, pointer) => _clickRuntime.handleTitleDoubleClick(win, pointer),
   });
 
   // ------------------------------------------------------------
@@ -1398,6 +1400,7 @@ export function createHudSystem(
     renderDebugOverlay: _debugOverlayRuntime.renderDebugOverlay,
     handleResize: () => _resizeRuntime.handleResize(),
     dispose: () => {
+      _desktopInputRuntime.disposeTitleDoubleClick();
       _disposeListAppearance();
       _disposeWindowChrome();
       _disposeHotbarDock();
