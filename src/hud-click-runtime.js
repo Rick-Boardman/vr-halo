@@ -194,7 +194,8 @@ export function createHudClickRuntime({
   }
 
   function toggleCollapsed(win) {
-    if (typeof win.toggleCollapsed === "function") win.toggleCollapsed();
+    if (typeof win.toggleUserCollapsed === "function") win.toggleUserCollapsed();
+    else if (typeof win.toggleCollapsed === "function") win.toggleCollapsed();
     else if (typeof win.setCollapsed === "function") win.setCollapsed(!win.collapsed);
     else win.collapsed = !win.collapsed;
     markDirty();

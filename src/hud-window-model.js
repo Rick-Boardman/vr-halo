@@ -76,6 +76,7 @@ export class HudWindowBase {
     this.minW = minW;
     this.minH = minH;
     this.collapsed = false;
+    this._hasUserCollapsedChoice = false;
     this.dragging = false;
     this.resizing = false;
     this.dragOffX = 0;
@@ -142,6 +143,27 @@ export class HudWindowBase {
 
   toggleCollapsed() {
     this.setCollapsed(!this.collapsed);
+  }
+
+  /** The title bar or minimize control owns collapse until the host resets its layout. */
+  toggleUserCollapsed() {
+    this._hasUserCollapsedChoice = true;
+    this.toggleCollapsed();
+  }
+
+  /**
+   * Apply an automatic frame default, not a show/hide or explicit app command.
+   * Unlike setCollapsed this leaves placement to the layout caller.
+   */
+  setLayoutCollapsed(next) {
+    if (this._hasUserCollapsedChoice || typeof next !== "boolean" || next === this.collapsed) return false;
+    this.collapsed = next;
+    if (this._hud) this._hud._dirty = true;
+    return true;
+  }
+
+  resetUserCollapsedChoice() {
+    this._hasUserCollapsedChoice = false;
   }
 
   setHidden(hidden, { hiddenX = HUD_WINDOW_VR_RIGHT_X_PX, hiddenY = HUD_WINDOW_HIDDEN_Y_PX } = {}) {

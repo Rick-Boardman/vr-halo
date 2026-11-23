@@ -374,6 +374,11 @@ titles, pass `onTitleDoubleClick` to handle rename, or set `titleEditable: true`
 when the host already handles the gesture. Set
 `collapseOnTitleDoubleClick: false` to opt out. A drag or a click on a title
 bar button does not trigger the title-bar gesture.
+For automatic frame defaults on a layout pass, call `win.setLayoutCollapsed(value)`
+instead of assigning `win.collapsed` directly. It preserves a user's title-bar
+or minimize choice. Explicit host actions can still call `win.setCollapsed(value)`;
+`win.resetUserCollapsedChoice()` re-enables layout defaults when intentionally
+resetting the panel's placement.
 
 Desktop mouse and touch arrive through `hud.pointer`, the XR controller ray
 through `hud.vrPointer`. `prepare()` keeps the press edge and `afterHud()` reads

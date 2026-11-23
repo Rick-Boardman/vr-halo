@@ -19,6 +19,8 @@ test("title double-click toggles an ordinary frame; controls and overlay keep pr
   assert.equal(runtime.getTitleDoubleClickWindow(cursor.x, cursor.y), win);
   assert.equal(runtime.handleTitleDoubleClick(win, cursor), true);
   assert.equal(win.collapsed, true);
+  assert.equal(win.setLayoutCollapsed(false), false);
+  assert.equal(win.collapsed, true);
   assert.equal(runtime.handleTitleDoubleClick(win, cursor), true);
   assert.equal(win.collapsed, false);
   assert.deepEqual([win.x, win.y, win.w, win.h], [50, 60, 320, 240]);
@@ -32,6 +34,20 @@ test("title double-click toggles an ordinary frame; controls and overlay keep pr
   drag = null;
   hud.overlay.contextMenu = { open: true };
   assert.equal(runtime.handleTitleDoubleClick(win, cursor), false);
+});
+
+test("explicit commands still win and automatic layout can be intentionally reset", () => {
+  const win = new HudWindowBase({ key: "panel" });
+  assert.equal(win.setLayoutCollapsed(true), true);
+  win.toggleUserCollapsed();
+  assert.equal(win.collapsed, false);
+  assert.equal(win.setLayoutCollapsed(true), false);
+  win.setCollapsed(true);
+  assert.equal(win.collapsed, true);
+  assert.equal(win.setLayoutCollapsed(false), false);
+  win.resetUserCollapsedChoice();
+  assert.equal(win.setLayoutCollapsed(false), true);
+  assert.equal(win.collapsed, false);
 });
 
 test("editing takes precedence and a titled panel can collapse without a minimize button", () => {
