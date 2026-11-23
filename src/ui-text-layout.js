@@ -336,6 +336,8 @@ export function wrapEntriesToLines({ entries, dot, maxWidth, defaultColor }) {
         actionButtonTextInsetPx: i === 0 ? actionButtonTextInsetPx : null,
         actionButtonIconFitMode: i === 0 ? actionButtonIconFitMode : null,
         actionButtonForceVisible: i === 0 ? actionButtonForceVisible : false,
+        accordionRole: i === 0 ? src?.accordionRole : null,
+        accordionSelected: i === 0 && src?.accordionSelected === true,
         rowBgColor,
         rowBgOpacity,
         rowHeightPx: i === 0 ? rowHeightPx : null,

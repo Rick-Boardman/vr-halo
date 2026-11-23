@@ -174,6 +174,8 @@ export function createHudRenderListRuntime({
               : null,
           actionButtonForceVisible:
             typeof e === "object" && e && e.actionButtonForceVisible === true,
+          accordionRole: e?.accordionRole,
+          accordionSelected: e?.accordionSelected === true,
           rowBgColor:
             typeof e === "object" && e && typeof e.rowBgColor === "number"
               ? e.rowBgColor
@@ -265,6 +267,7 @@ export function createHudRenderListRuntime({
     }
 
     const appearance = win.appearanceTokens;
+    const accordionInk = resolveHudAccordionInk(appearance);
     const visible = wrappedAll.slice(
       win.scrollTop,
       win.scrollTop + visibleLines
@@ -637,47 +640,35 @@ export function createHudRenderListRuntime({
     try {
       const rowInsetX = appearance ? 5 : 2;
       const rowInsetY = appearance ? 2 : 1;
-      const rows = slice
-        .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) => typeof entry?.rowBgColor === "number");
-
-      if (!rows.length || effectiveCw <= rowInsetX * 2) {
-        hideRowBackgrounds();
-      } else {
-        ensureRowBackgroundCount(rows.length);
-        const roBase = Number.isFinite(objs?._renderOrderBase)
-          ? Math.floor(objs._renderOrderBase)
-          : 0;
-        for (let rowIndex = 0; rowIndex < objs.rowBackgroundRects.length; rowIndex += 1) {
-          const mesh = objs.rowBackgroundRects[rowIndex];
-          const row = rows[rowIndex];
-          if (!mesh || !row) {
-            if (mesh) mesh.visible = false;
-            continue;
-          }
-
-          const bgColor = Number(row.entry.rowBgColor) >>> 0;
-          const bgOpacity = Number.isFinite(row.entry.rowBgOpacity)
-            ? Number(row.entry.rowBgOpacity)
-            : 0.82;
-          try {
-            if (mesh.material?.color) mesh.material.color.setHex(bgColor);
-            if (mesh.material) mesh.material.opacity = bgOpacity;
-            mesh.renderOrder = roBase + 18;
-          } catch {
-            // no-op
-          }
-
-          positionRect(
-            mesh,
-            cx + rowInsetX,
-            cy + (rowTops[row.index] ?? row.index * lineH) + rowInsetY,
-            Math.max(0, effectiveCw - rowInsetX * 2),
-            Math.max(6, (rowHeights[row.index] ?? lineH) - rowInsetY * 2),
-            0.0033 + lift
-          );
-          mesh.visible = true;
+      const layers = [];
+      slice.forEach((entry, index) => {
+        const top = rowTops[index] ?? index * lineH;
+        const height = rowHeights[index] ?? lineH;
+        if (entry.accordionRole) {
+          layers.push(...layoutHudAccordionRow(entry.accordionRole, effectiveCw, top, height,
+            availableContentHeight, accordionInk, entry.accordionSelected));
+        } else if (typeof entry.rowBgColor === "number" && effectiveCw > rowInsetX * 2) {
+          layers.push({ x: rowInsetX, y: top + rowInsetY, w: effectiveCw - rowInsetX * 2,
+            h: Math.max(6, height - rowInsetY * 2), color: entry.rowBgColor,
+            opacity: Number.isFinite(entry.rowBgOpacity) ? entry.rowBgOpacity : 0.82, order: 18 });
         }
+      });
+      if (!layers.length) hideRowBackgrounds();
+      else {
+        ensureRowBackgroundCount(layers.length);
+        const roBase = Number.isFinite(objs?._renderOrderBase) ? Math.floor(objs._renderOrderBase) : 0;
+        objs.rowBackgroundRects.forEach((mesh, index) => {
+          const layer = layers[index];
+          if (!mesh || !layer) {
+            if (mesh) mesh.visible = false;
+            return;
+          }
+          mesh.material?.color?.setHex(layer.color);
+          if (mesh.material) mesh.material.opacity = layer.opacity;
+          mesh.renderOrder = roBase + layer.order;
+          positionRect(mesh, cx + layer.x, cy + layer.y, layer.w, layer.h, 0.0033 + lift);
+          mesh.visible = true;
+        });
       }
     } catch {
       hideRowBackgrounds();
@@ -712,10 +703,13 @@ export function createHudRenderListRuntime({
           const rowHeight = rowHeights[row.index] ?? lineH;
           const rowTop = rowTops[row.index] ?? row.index * lineH;
           const hasButtonText = typeof button.text === "string" && button.text.length > 0;
-          const buttonW = Math.max(18, Math.min(effectiveCw - 2, Number.isFinite(button.widthPx) ? Number(button.widthPx) : 24));
-          const buttonH = Math.max(8, rowHeight - 4);
-          const buttonX = cx + Math.max(0, effectiveCw - buttonW - 2);
-          const buttonY = cy + rowTop + Math.max(1, Math.floor((rowHeight - buttonH) / 2));
+          const accordionRole = slice[row.index]?.accordionRole;
+          const accordion = !!accordionRole && effectiveCw > 28;
+          const heading = accordionRole === "header" || accordionRole === "single";
+          const buttonW = accordion ? effectiveCw - 2 * ACCORDION_SIDE : Math.max(18, Math.min(effectiveCw - 2, Number.isFinite(button.widthPx) ? Number(button.widthPx) : 24));
+          const buttonH = accordion ? rowHeight : Math.max(8, rowHeight - 4);
+          const buttonX = cx + (accordion ? ACCORDION_SIDE : Math.max(0, effectiveCw - buttonW - 2));
+          const buttonY = cy + rowTop + (accordion ? 0 : Math.max(1, Math.floor((rowHeight - buttonH) / 2)));
 
           try {
             if (mesh.material?.color) mesh.material.color.setHex(
@@ -731,9 +725,11 @@ export function createHudRenderListRuntime({
 
           const focused = win._textCaret?.target === "actionButton" && win._textCaret?.row === row.index + win.scrollTop && win._textCaret.visible ||
             win._textSelection?.target === "actionButton" && win._textSelection?.startRow === row.index + win.scrollTop && win._textSelection.visible;
-          applyControlSurface(mesh, appearance, button.bgColor, buttonW, buttonH, focused);
+          if (!accordion) applyControlSurface(mesh, appearance, button.bgColor, buttonW, buttonH, focused);
           positionRect(mesh, buttonX, buttonY, buttonW, buttonH, 0.00345 + lift);
-          mesh.visible = true;
+          // The group layers supply the surface; never draw a second boxed field above it.
+          mesh.visible = !accordion;
+          if (accordion) button.textColor = heading ? accordionInk.headingText : accordionInk.text;
 
           if (button.iconTexture) {
             syncButtonIconMesh(icon, button.iconTexture, roBase + 20);
@@ -755,7 +751,7 @@ export function createHudRenderListRuntime({
             ? clamp(Number(button.textInsetPx), 4, Math.max(4, buttonW - 4))
             : null;
           const textX = buttonX + (textInsetPx != null ? textInsetPx : Math.max(4, Math.floor(buttonW * 0.28)));
-          const textY = buttonY + 1;
+          const textY = buttonY + (accordion ? Math.max(1, Math.floor((buttonH - lineH) / 2)) : 1);
           button.textX = textX;
           button.textY = textY;
           button.dot = buttonDot;
@@ -770,7 +766,7 @@ export function createHudRenderListRuntime({
                 text: String(button.text ?? ""),
                 x: textX,
                 y: textY,
-                dot: buttonDot,
+                dot: accordion && heading ? buttonDot * 1.1 : buttonDot,
                 color: typeof button.textColor === "number" ? Number(button.textColor) >>> 0 : 0xffffff,
                 maxWidth: textMaxWidth,
                 truncateSingleLine: true,
@@ -1474,6 +1470,39 @@ export function createHudRenderListRuntime({
   }
 
   return { renderList, dispose: () => { for (const texture of controlTextures.values()) texture.dispose(); controlTextures.clear(); } };
+}
+
+const ACCORDION_SIDE = 7;
+
+// Colors follow the active HUD theme, with a native dark fallback for custom/legacy skins.
+function resolveHudAccordionInk(theme) {
+  const dark = !theme || (theme.surface ?? 0x182536) < 0x808080;
+  return dark
+    ? { body: 0x223449, heading: 0x314a65, rail: 0x81a6cb, border: 0x6e8ba8,
+        headingText: 0xf2f6fb, text: 0xe1ebf6, selected: theme?.selectedRow ?? 0x35577d }
+    : { body: 0xedf3f9, heading: 0xdce8f5, rail: 0x597da2, border: 0x7893ae,
+        headingText: 0x162f4a, text: 0x243d56, selected: theme?.selectedRow ?? 0xd3e5f7 };
+}
+
+// The caller provides full-list edge roles before slicing. Never draw a false
+// top/bottom border when scrolling through a section or clipping its last row.
+export function layoutHudAccordionRow(role, width, top, height, viewportHeight, ink, selected = false) {
+  const first = role === "header" || role === "single";
+  const last = role === "last" || role === "single";
+  if ((!first && !last && role !== "item") || width <= 28 || height <= 0) return [];
+  const x = ACCORDION_SIDE, w = width - x * 2;
+  const rects = [];
+  const draw = (x, y, w, h, color, order) => {
+    const start = Math.max(0, y), end = Math.min(viewportHeight, y + h);
+    if (end > start && w > 0) rects.push({ x, y:start, w, h:end-start, color, order, opacity:1 });
+  };
+  draw(x, top, w, height, first ? ink.heading : ink.body, 17);
+  draw(x, top, 3, height, ink.rail, 18);
+  draw(x + w - 1, top, 1, height, ink.border, 18);
+  if (first) draw(x + 3, top, w - 4, 1, ink.border, 18);
+  if (first || last) draw(x + 3, top + height - 1, w - 4, 1, ink.border, 18);
+  if (!first && selected) draw(x + 10, top + 2, w - 16, height - 4, ink.selected, 18);
+  return rects;
 }
 
 function normalizeFooterActions(entries, appearance) {
