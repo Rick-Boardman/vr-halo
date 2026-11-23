@@ -2,6 +2,7 @@
 // Internal UI overlays (Tooltip + Context Menu).
 // Extracted from hud.js for Phase 2 modularization.
 
+import { getTextRenderInfo } from "troika-three-text";
 import { contrastHudInk } from "./hud-appearance-tokens.js";
 
 import {
@@ -15,7 +16,7 @@ import {
   getHudGlyphDotSizePx,
   getHudTextLineHeightPx,
 } from "./hud-layout-policy.js";
-import { HUD_TEXT_DEFAULT_COLOR, HUD_TEXT_DISABLED_COLOR } from "./hud-text-style.js";
+import { HUD_TEXT_DEFAULT_COLOR, HUD_TEXT_DISABLED_COLOR, HUD_TEXT_SDF_GLYPH_SIZE } from "./hud-text-style.js";
 import { estimateTextWidthPx } from "./text-measurement.js";
 import { getHudWindowControlRects } from "./hud-window-skin-runtime.js";
 
@@ -77,6 +78,7 @@ export function createHudUiOverlays({
   // Clipboard/actions
   copyTextToClipboard,
   normalizeEntriesToText,
+  measureTooltipText = typeof document === "undefined" ? null : getTextRenderInfo,
 } = {}) {
   const titleH = HUD_WINDOW_TITLE_HEIGHT_PX;
 
@@ -101,6 +103,38 @@ export function createHudUiOverlays({
         Math.max(HUD_OVERLAY_PADDING_PX, hud.layoutH - h - HUD_OVERLAY_PADDING_PX)
       ),
     };
+  }
+
+  const tooltipMetrics = new Map();
+  const pendingTooltipMetrics = new Set();
+  function getTooltipWidth(line, dot, pixel, measure) {
+    if (!line) return 0;
+    const mesh = pixel?._textMesh;
+    const key = JSON.stringify([line, dot, mesh?.font, mesh?.fontWeight]);
+    const exact = tooltipMetrics.get(key);
+    if (exact != null) return exact;
+    if (measure && measureTooltipText && pendingTooltipMetrics.size < 32 && !pendingTooltipMetrics.has(key)) {
+      pendingTooltipMetrics.add(key);
+      try {
+        measureTooltipText({
+          text: line, font: mesh?.font, fontWeight: mesh?.fontWeight,
+          fontSize: 7 * dot, sdfGlyphSize: HUD_TEXT_SDF_GLYPH_SIZE,
+          unicodeFontsURL: mesh?.unicodeFontsURL, whiteSpace: "nowrap",
+        }, info => {
+          pendingTooltipMetrics.delete(key);
+          const [, , inkRight] = info?.visibleBounds ?? [];
+          const [, , advanceRight] = info?.blockBounds ?? [];
+          const width = Math.max(0, Number(inkRight) || 0, Number(advanceRight) || 0);
+          if (width > 0) {
+            if (tooltipMetrics.size >= 256) tooltipMetrics.delete(tooltipMetrics.keys().next().value);
+            tooltipMetrics.set(key, Math.ceil(width) + 2);
+            markDirty?.();
+          }
+        });
+      } catch { pendingTooltipMetrics.delete(key); }
+    }
+    // Until Troika resolves the font, reserve more space than the old pixel-cell estimate.
+    return Math.ceil(estimateTextWidthPx(line, dot) * 1.25 + 4);
   }
 
   function layoutTooltip() {
@@ -128,21 +162,24 @@ export function createHudUiOverlays({
     const appearance = hud.ui?.theme?.contentTokens;
     const dot = getHudGlyphDotSizePx(renderer) * (appearance ? 1.12 : 1);
     const pad = HUD_OVERLAY_PADDING_PX;
+    const padX = pad + (appearance ? 4 : 0);
+    const lineWidth = (text, measure = false) => appearance
+      ? getTooltipWidth(text, dot, o.tooltipText, measure) : estimateTextWidthPx(text, dot);
 
     const entries = hasEntries ? tip.entries : null;
     // Long tooltip lines wrap at a fixed text width instead of stretching
     // the tip across the HUD (from Aether Forge, 2026-10).
     // `hud.ui.data.tooltipTextWidthPx` changes the width; default 260.
     const wantedTipTextW = Math.max(80, Number(hud.ui?.data?.tooltipTextWidthPx) || 260);
-    const tipTextW = appearance ? Math.min(wantedTipTextW, Math.max(40, hud.layoutW - pad * 4)) : wantedTipTextW;
+    const tipTextW = appearance ? Math.min(wantedTipTextW, Math.max(1, hud.layoutW - pad * 2 - padX * 2)) : wantedTipTextW;
     const wrapTip = (line) => {
       const raw = String(line ?? "");
-      if (!raw || estimateTextWidthPx(raw, dot) <= tipTextW) return [raw];
+      if (!raw || lineWidth(raw) <= tipTextW) return [raw];
       const out = [];
       let current = "";
       for (const word of raw.split(/\s+/)) {
         const next = current ? `${current} ${word}` : word;
-        if (current && estimateTextWidthPx(next, dot) > tipTextW) {
+        if (current && lineWidth(next) > tipTextW) {
           out.push(current);
           current = word;
         } else {
@@ -154,7 +191,7 @@ export function createHudUiOverlays({
       return (out.length ? out : [raw]).flatMap(part => {
         const chunks = []; let next = "";
         for (const glyph of part) {
-          if (next && estimateTextWidthPx(next + glyph, dot) > tipTextW) { chunks.push(next); next = ""; }
+          if (next && lineWidth(next + glyph) > tipTextW) { chunks.push(next); next = ""; }
           next += glyph;
         }
         if (next) chunks.push(next);
@@ -166,8 +203,8 @@ export function createHudUiOverlays({
       : String(tip.text ?? "").split("\n")
     ).flatMap(wrapTip);
 
-    const textW = lines.reduce((m, s) => Math.max(m, estimateTextWidthPx(s, dot)), 0);
-    const w = clamp(Math.min(textW, tipTextW) + pad * 2, 80, Math.max(80, hud.layoutW - 20));
+    const textW = lines.reduce((m, line) => Math.max(m, lineWidth(line, true)), 0);
+    const w = clamp(Math.min(textW, tipTextW) + padX * 2, 80, Math.max(80, hud.layoutW - 20));
     const lineH = getHudTextLineHeightPx(dot);
     const h = clamp(
       lines.length * lineH + pad * 2,
@@ -311,10 +348,11 @@ export function createHudUiOverlays({
             text, color: contrastHudInk(entry.color, surface, ink),
           }));
         }) : entries,
-        x: x + pad,
+        x: x + padX,
         y: y + pad,
         dot,
-        maxWidth: Math.max(0, w - pad * 2),
+        // Native lines are already bounded here. Do not apply a second glyph clip.
+        maxWidth: appearance ? null : Math.max(0, w - padX * 2),
         defaultColor: ink ?? HUD_TEXT_DEFAULT_COLOR,
       });
     } else {
@@ -324,10 +362,11 @@ export function createHudUiOverlays({
       setPlainTextMaybeTroika({
         pixel: o.tooltipText,
         text: lines.join("\n"),
-        x: x + pad,
+        x: x + padX,
         y: y + pad,
         dot,
-        maxWidth: Math.max(0, w - pad * 2),
+        // Native lines are already bounded here. Do not apply a second glyph clip.
+        maxWidth: appearance ? null : Math.max(0, w - padX * 2),
         color: ink ?? HUD_TEXT_DEFAULT_COLOR,
         zLift: 0,
         renderOrder: 9010,
