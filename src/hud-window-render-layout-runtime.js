@@ -341,24 +341,34 @@ export function createHudWindowRenderLayoutRuntime({
     }
 
     if (Array.isArray(objs.titleDots)) {
-      const showTitleDots =
-        !isHotbar &&
-        effectiveTitleH > 0 &&
-        win.showTitleDots !== false &&
-        !titleChrome.skinned;
+      const nativeGrip = !!appearance && Number.isFinite(appearance.headerControl);
+      const showTitleDots = !isHotbar && effectiveTitleH > 0 &&
+        win.showTitleDots !== false && !titleChrome.skinned &&
+        (!nativeGrip || win.draggable !== false);
       for (let index = 0; index < objs.titleDots.length; index += 1) {
         const dot = objs.titleDots[index];
         if (!dot) continue;
-        dot.visible = showTitleDots;
-        if (!showTitleDots) continue;
-        positionRect(
-          dot,
-          titleChrome.x + 8 + index * 7,
-          titleChrome.y + Math.floor((effectiveTitleH - 4) / 2),
-          4,
-          4,
-          0.00218 + lift
-        );
+        // Decoration only: Halo's existing title bar keeps the whole move
+        // hit region, including the grip, without changing resize or buttons.
+        dot.visible = showTitleDots && (nativeGrip || index < 3);
+        if (!dot.visible) continue;
+        if (nativeGrip) {
+          dot.userData.legacyTitleDotColor ??= dot.material?.color?.getHex?.();
+          dot.material?.color?.setHex(win.dragging
+            ? (appearance.headerControlHover ?? appearance.headerControl)
+            : appearance.headerControl);
+          if (dot.material) dot.material.opacity = 1;
+          const size = Math.min(6, Math.max(3, (effectiveTitleH - 4) / 3));
+          const step = size + 1;
+          positionRect(dot, titleChrome.x + 9 + (index % 2) * step,
+            titleChrome.y + (effectiveTitleH - (size + 2 * step)) / 2 + Math.floor(index / 2) * step,
+            size, size, 0.00218 + lift);
+        } else {
+          if (Number.isFinite(dot.userData.legacyTitleDotColor)) dot.material?.color?.setHex(dot.userData.legacyTitleDotColor);
+          if (dot.material) dot.material.opacity = 0.6;
+          positionRect(dot, titleChrome.x + 8 + index * 7,
+            titleChrome.y + Math.floor((effectiveTitleH - 4) / 2), 4, 4, 0.00218 + lift);
+        }
       }
     }
 
