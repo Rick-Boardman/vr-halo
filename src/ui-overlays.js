@@ -2,6 +2,8 @@
 // Internal UI overlays (Tooltip + Context Menu).
 // Extracted from hud.js for Phase 2 modularization.
 
+import { contrastHudInk } from "./hud-appearance-tokens.js";
+
 import {
   HUD_OVERLAY_PADDING_PX,
   HUD_WINDOW_TITLE_HEIGHT_PX,
@@ -112,6 +114,7 @@ export function createHudUiOverlays({
     if (!tip?.visible || (!hasEntries && !hasText) || !o) {
       setVrVirtualWindowState?.("__tooltip", null);
       if (o) {
+        if (o.tooltipOutline) o.tooltipOutline.visible = false;
         o.tooltipBg.visible = false;
         o.tooltipText.mesh.visible = false;
         hideColorLayers(o);
@@ -122,14 +125,16 @@ export function createHudUiOverlays({
     }
 
     const isVr = !!renderer.xr.isPresenting;
-    const dot = getHudGlyphDotSizePx(renderer);
+    const appearance = hud.ui?.theme?.contentTokens;
+    const dot = getHudGlyphDotSizePx(renderer) * (appearance ? 1.12 : 1);
     const pad = HUD_OVERLAY_PADDING_PX;
 
     const entries = hasEntries ? tip.entries : null;
     // Long tooltip lines wrap at a fixed text width instead of stretching
     // the tip across the HUD (from Aether Forge, 2026-10).
     // `hud.ui.data.tooltipTextWidthPx` changes the width; default 260.
-    const tipTextW = Math.max(80, Number(hud.ui?.data?.tooltipTextWidthPx) || 260);
+    const wantedTipTextW = Math.max(80, Number(hud.ui?.data?.tooltipTextWidthPx) || 260);
+    const tipTextW = appearance ? Math.min(wantedTipTextW, Math.max(40, hud.layoutW - pad * 4)) : wantedTipTextW;
     const wrapTip = (line) => {
       const raw = String(line ?? "");
       if (!raw || estimateTextWidthPx(raw, dot) <= tipTextW) return [raw];
@@ -145,7 +150,16 @@ export function createHudUiOverlays({
         }
       }
       if (current) out.push(current);
-      return out.length ? out : [raw];
+      if (!appearance) return out.length ? out : [raw];
+      return (out.length ? out : [raw]).flatMap(part => {
+        const chunks = []; let next = "";
+        for (const glyph of part) {
+          if (next && estimateTextWidthPx(next + glyph, dot) > tipTextW) { chunks.push(next); next = ""; }
+          next += glyph;
+        }
+        if (next) chunks.push(next);
+        return chunks;
+      });
     };
     const lines = (entries
       ? entries.map((e) => String((typeof e === "object" && e ? e.text : e) ?? ""))
@@ -171,6 +185,7 @@ export function createHudUiOverlays({
     // (Otherwise they can snap to 0/0 or flicker when upstream coords go invalid.)
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       setVrVirtualWindowState?.("__tooltip", null);
+      if (o.tooltipOutline) o.tooltipOutline.visible = false;
       o.tooltipBg.visible = false;
       o.tooltipText.mesh.visible = false;
       hideColorLayers(o);
@@ -264,6 +279,25 @@ export function createHudUiOverlays({
       setVrVirtualWindowState?.("__tooltip", null);
     }
 
+    const material = o.tooltipBg.material;
+    const surface = appearance?.tooltipSurface ?? appearance?.surface;
+    const ink = appearance?.tooltipText ?? appearance?.text;
+    if (appearance && material) {
+      o._legacyTooltipStyle ??= { color: material.color.getHex(), opacity: material.opacity };
+      material.color.setHex(surface);
+      material.opacity = 1;
+    } else if (material && o._legacyTooltipStyle) {
+      material.color.setHex(o._legacyTooltipStyle.color);
+      material.opacity = o._legacyTooltipStyle.opacity;
+      delete o._legacyTooltipStyle;
+    }
+    if (o.tooltipOutline) {
+      o.tooltipOutline.visible = !!appearance;
+      if (appearance) {
+        o.tooltipOutline.material.color.setHex(appearance.tooltipBorder ?? appearance.fieldBorder ?? ink);
+        positionRect(o.tooltipOutline, x - 1, y - 1, w + 2, h + 2, 0.00595);
+      }
+    }
     positionRect(o.tooltipBg, x, y, w, h, 0.006);
 
     if (entries) {
@@ -271,12 +305,17 @@ export function createHudUiOverlays({
       o.tooltipText.mesh.visible = true;
       setColoredMultilineText({
         objs: o,
-        entries,
+        entries: appearance ? entries.flatMap(raw => {
+          const entry = typeof raw === "object" && raw ? raw : { text: raw };
+          return String(entry.text ?? "").split("\n").flatMap(wrapTip).map(text => ({
+            text, color: contrastHudInk(entry.color, surface, ink),
+          }));
+        }) : entries,
         x: x + pad,
         y: y + pad,
         dot,
         maxWidth: Math.max(0, w - pad * 2),
-        defaultColor: HUD_TEXT_DEFAULT_COLOR,
+        defaultColor: ink ?? HUD_TEXT_DEFAULT_COLOR,
       });
     } else {
       // Plain text tooltip.
@@ -289,7 +328,7 @@ export function createHudUiOverlays({
         y: y + pad,
         dot,
         maxWidth: Math.max(0, w - pad * 2),
-        color: HUD_TEXT_DEFAULT_COLOR,
+        color: ink ?? HUD_TEXT_DEFAULT_COLOR,
         zLift: 0,
         renderOrder: 9010,
         truncateSingleLine: false,
