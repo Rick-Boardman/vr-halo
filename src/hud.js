@@ -1270,8 +1270,9 @@ export function createHudSystem(
     makeRect,
   });
 
-  const { renderWindowContent: _renderWindowContent } =
+  const { renderWindowContent: _renderWindowContent, dispose: _disposeHotbarDock } =
     createHudWindowContentDispatchRuntime({
+      THREE,
       hud,
       renderer,
       setPlainTextMaybeTroika: _setPlainTextMaybeTroika,
@@ -1399,6 +1400,7 @@ export function createHudSystem(
     dispose: () => {
       _disposeListAppearance();
       _disposeWindowChrome();
+      _disposeHotbarDock();
       _resizeRuntime.disposeAutoResize();
     },
     setNavigationHelpProfile: (profile) => _helpContentRuntime.setNavigationHelpProfile(profile),

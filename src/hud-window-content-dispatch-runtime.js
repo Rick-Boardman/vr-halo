@@ -10,6 +10,8 @@
  * @module hud-window-content-dispatch-runtime
  */
 
+import { createHotbarDockPainter, dockTile, resolveHotbarDock } from "./hud-hotbar-appearance.js";
+
 import {
   HUD_TEXT_DEFAULT_COLOR,
   HUD_TEXT_EMPHASIS_COLOR,
@@ -84,6 +86,7 @@ const HOTBAR_SEPARATOR_LINE_MARGIN_PX = 7;
  * @returns {{ renderWindowContent: Function }}
  */
 export function createHudWindowContentDispatchRuntime({
+  THREE,
   hud,
   renderer,
   setPlainTextMaybeTroika,
@@ -94,6 +97,7 @@ export function createHudWindowContentDispatchRuntime({
   getHotbarSlotLayout,
   getStatusMode,
 }) {
+  const dockPainter=createHotbarDockPainter(THREE);
 
   /**
    * Render the content for a specific window type.
@@ -588,10 +592,16 @@ export function createHudWindowContentDispatchRuntime({
     const stone = getHudStoneSkinChrome(hud);
     const headerTitle = String(hud.ui?.data?.hotbarHeaderTitle ?? "").trim();
     const appearance = win.panelTheme === false ? null : (win.appearanceTokens ?? hud.ui?.theme?.contentTokens);
-    const headerColor = appearance?.hotbarTitle ?? appearance?.text ?? Number(hud.ui?.data?.hotbarHeaderColor ?? (stone?.parchment ?? HUD_TEXT_INFO_COLOR)) >>> 0;
+    const dock = stone ? null : resolveHotbarDock(hud.ui?.theme?.key, appearance);
+    if (dock) {
+      dockPainter.apply(objs.bg,win.w,win.h,{fill:dock.shell,top:dock.top,edge:dock.edge,radius:13});
+      if (objs.outline) objs.outline.visible=false;
+    } else dockPainter.apply(objs.bg);
+    const hoverId=hud.overlay?.tooltip?._hoverId;
+    const headerColor = dock?.ink ?? appearance?.hotbarTitle ?? appearance?.text ?? Number(hud.ui?.data?.hotbarHeaderColor ?? (stone?.parchment ?? HUD_TEXT_INFO_COLOR)) >>> 0;
     const statusText = String(hud.ui?.data?.hotbarStatusText ?? "").trim();
     const statusTextColor = appearance ? 0xffffff : Number(hud.ui?.data?.hotbarStatusTextColor ?? (stone?.ink ?? 0x18202a)) >>> 0;
-    const statusBgColor = appearance ? 0x34485c : Number(hud.ui?.data?.hotbarStatusBgColor ?? (stone?.gold ?? 0xa7dfb5)) >>> 0;
+    const statusBgColor = dock?.status ?? (appearance ? 0x34485c : Number(hud.ui?.data?.hotbarStatusBgColor ?? (stone?.gold ?? 0xa7dfb5)) >>> 0);
 
     const hotbarRoBase = Number.isFinite(objs?._renderOrderBase)
       ? Math.floor(objs._renderOrderBase)
@@ -622,16 +632,17 @@ export function createHudWindowContentDispatchRuntime({
       ? Math.max(HOTBAR_TITLE_MIN_DOT_PX, labelDot + (appearance ? 0.50 : 0))
       : Math.max(HOTBAR_TITLE_REGULAR_DOT_PX, labelDot + 1);
     const titleTextH = 7 * titleDot;
-    const titleY = win.y + Math.max(0, Math.floor((win.h - titleTextH) / 2));
+    const titleY = win.y + Math.max(0, Math.floor((win.h - titleTextH) / 2)) - (dock ? 2 : 0);
 
     if (titleText) {
       setPlainTextMaybeTroika({
         pixel: titleText,
         text: compactTitle,
-        x: win.x + (compactChrome && !canUseFullTitle ? HOTBAR_HEADER_COMPACT_TEXT_OFFSET_X_PX : HOTBAR_HEADER_TEXT_OFFSET_X_PX),
+        x: win.x + (dock ? (compactChrome && !canUseFullTitle ? 20 : 32) : (compactChrome && !canUseFullTitle ? HOTBAR_HEADER_COMPACT_TEXT_OFFSET_X_PX : HOTBAR_HEADER_TEXT_OFFSET_X_PX)),
         y: titleY,
         dot: titleDot,
         color: headerColor,
+        fontWeight: dock ? "bold" : null,
         zLift: lift,
         renderOrder: hotbarRoBase + HUD_RENDER_ORDER_TEXT_OFFSET,
       });
@@ -642,16 +653,16 @@ export function createHudWindowContentDispatchRuntime({
       const showDot = !!headerTitle;
       dot.visible = showDot;
       if (!showDot) continue;
-      if (appearance) dot.material?.color?.setHex(appearance.fieldBorder);
+      if (appearance) dot.material?.color?.setHex(dock?.grip ?? appearance.fieldBorder);
       const column = index % 2;
       const row = Math.floor(index / 2);
       setMeshRenderOrder(dot, hotbarRoBase + HUD_RENDER_ORDER_TITLE_DIVIDER_OFFSET);
       positionRect(
         dot,
-        win.x + (compactChrome ? 8 : 16) + column * (compactChrome ? 8 : 10),
-        win.y + Math.floor((win.h - (compactChrome ? 18 : 24)) / 2) + row * (compactChrome ? 8 : 10),
-        compactChrome ? 3 : 4,
-        compactChrome ? 3 : 4,
+        win.x + (dock ? 10 : compactChrome ? 8 : 16) + column * (dock ? 6 : compactChrome ? 8 : 10),
+        win.y + Math.floor((win.h - (dock ? 14 : compactChrome ? 18 : 24)) / 2) + row * (dock ? 6 : compactChrome ? 8 : 10),
+        dock ? 2.4 : compactChrome ? 3 : 4,
+        dock ? 2.4 : compactChrome ? 3 : 4,
         HUD_Z_SURFACE_FG + lift
       );
     }
@@ -667,7 +678,7 @@ export function createHudWindowContentDispatchRuntime({
         const badgeMinW = compactChrome ? HOTBAR_COMPACT_BADGE_MIN_WIDTH_PX : HOTBAR_REGULAR_BADGE_MIN_WIDTH_PX;
         const badgeMaxW = Math.max(badgeMinW, rightGutter - (compactChrome ? 10 : 18));
         const badgeW = clamp(badgeTextW + (compactChrome ? 22 : 30), badgeMinW, badgeMaxW);
-        const badgeH = compactChrome ? HOTBAR_COMPACT_BADGE_HEIGHT_PX : HOTBAR_REGULAR_BADGE_HEIGHT_PX;
+        const badgeH = dock ? Math.min(win.h-12,26) : (compactChrome ? HOTBAR_COMPACT_BADGE_HEIGHT_PX : HOTBAR_REGULAR_BADGE_HEIGHT_PX);
         const badgeX = win.x + win.w - rightGutter + Math.max(0, Math.floor((rightGutter - badgeW) / 2));
         const badgeY = win.y + Math.floor((win.h - badgeH) / 2);
         if (statusBg.material?.color) {
@@ -676,15 +687,21 @@ export function createHudWindowContentDispatchRuntime({
         if (statusBg.material) {
           statusBg.material.opacity = 0.96;
         }
+        const sourceStatus=Number(hud.ui?.data?.hotbarStatusBgColor)>>>0;
+        const amber=((sourceStatus>>16)&255)>((sourceStatus>>8)&255)*1.1;
+        const statusFill=amber?0x665329:statusBgColor;
+        if (dock) dockPainter.apply(statusBg,badgeW,badgeH,{fill:statusFill,edge:amber?0xb19a58:dock.statusEdge,radius:badgeH/2});
+        else dockPainter.apply(statusBg);
         setMeshRenderOrder(statusBg, hotbarRoBase + HUD_RENDER_ORDER_TITLE_OFFSET);
         positionRect(statusBg, badgeX, badgeY, badgeW, badgeH, HUD_Z_SURFACE_FG + lift);
         setPlainTextMaybeTroika({
           pixel: statusTextObj,
           text: compactStatusText,
           x: badgeX + Math.max(0, Math.floor((badgeW - badgeTextW) / 2)),
-          y: badgeY + Math.max(0, Math.floor((badgeH - 7 * badgeDot) / 2)),
+          y: badgeY + Math.max(0, Math.floor((badgeH - 7 * badgeDot) / 2)) - (dock ? 2 : 0),
           dot: badgeDot,
           color: statusTextColor,
+          fontWeight: dock ? "bold" : null,
           zLift: lift,
           renderOrder: hotbarRoBase + HUD_RENDER_ORDER_TEXT_OFFSET,
         });
@@ -713,15 +730,15 @@ export function createHudWindowContentDispatchRuntime({
           bg.material.needsUpdate = true;
         }
         if (bg?.material?.color) {
-          bg.material.color.setHex(Number(item?.separatorColor ?? HUD_SURFACE_ACCENT_COLOR) >>> 0);
+          bg.material.color.setHex(dock?.rule ?? (Number(item?.separatorColor ?? HUD_SURFACE_ACCENT_COLOR) >>> 0));
         }
         if (bg?.material) {
-          bg.material.opacity = Number.isFinite(item?.separatorOpacity)
+          bg.material.opacity = dock ? 0.88 : Number.isFinite(item?.separatorOpacity)
             ? Number(item.separatorOpacity)
             : 0.72;
         }
         setMeshRenderOrder(bg, hotbarRoBase + HUD_RENDER_ORDER_TITLE_DIVIDER_OFFSET);
-        const separatorH = Math.max(HOTBAR_SEPARATOR_LINE_MIN_HEIGHT_PX, slot - HOTBAR_SEPARATOR_LINE_MARGIN_PX * 2);
+        const separatorH = dock ? Math.round(slot*0.55) : Math.max(HOTBAR_SEPARATOR_LINE_MIN_HEIGHT_PX, slot - HOTBAR_SEPARATOR_LINE_MARGIN_PX * 2);
         positionRect(
           bg,
           x + Math.max(0, Math.floor((slotW - HOTBAR_SEPARATOR_LINE_WIDTH_PX) / 2)),
@@ -735,6 +752,22 @@ export function createHudWindowContentDispatchRuntime({
       if (isSpacer) continue;
 
       const slotMap = item?.iconTexture ?? null;
+      if (dock) {
+        const inset=1.4, w=Math.max(1,slotW-inset*2), h=Math.max(1,slot-inset*2);
+        dockPainter.apply(outline,w,h,{...dockTile(dock,item,{active:isActive,hovered:hoverId==="hotbar:slot:"+i}),radius:7});
+        setMeshRenderOrder(outline,hotbarRoBase+HUD_RENDER_ORDER_TITLE_OFFSET);
+        positionRect(outline,x+inset,y+inset,w,h,0.002+lift);
+        bg.visible=!!slotMap;
+        if (slotMap && bg.material) {
+          if(bg.material.map!==slotMap){bg.material.map=slotMap;bg.material.needsUpdate=true;}
+          bg.material.color.setHex(0xffffff); bg.material.opacity=item?.disabled===true?0.64:1;
+          const iconSize=Math.max(1,Math.min(slotW,slot)*0.81);
+          setMeshRenderOrder(bg,hotbarRoBase+HUD_RENDER_ORDER_TITLE_DIVIDER_OFFSET);
+          positionRect(bg,x+(slotW-iconSize)/2,y+(slot-iconSize)/2,iconSize,iconSize,HUD_Z_SURFACE_RECESSED+lift);
+        }
+        continue;
+      }
+      dockPainter.apply(outline);
       if (bg?.material && bg.material.map !== slotMap) {
         bg.material.map = slotMap;
         bg.material.needsUpdate = true;
@@ -925,16 +958,17 @@ export function createHudWindowContentDispatchRuntime({
         while (text && textDot > 1 && estimateTextWidthPx(text, textDot, HUD_TEXT_ESTIMATE_GAP_PX) > maxTextW) {
           textDot -= 1;
         }
-        const textW = estimateTextWidthPx(text, textDot, HUD_TEXT_ESTIMATE_GAP_PX);
+        const textW = estimateTextWidthPx(text, textDot, HUD_TEXT_ESTIMATE_GAP_PX) * (dock ? 1.10 : 1);
         const textH = 7 * textDot;
         const ix = sx + Math.max(0, Math.round((slotW - textW) / 2));
         setPlainTextMaybeTroika({
           pixel: t,
           text,
           x: ix,
-          y: startY + Math.round((slot - textH) / 2),
+          y: startY + Math.round((slot - textH) / 2) - (dock ? 2 : 0),
           dot: textDot,
-          color: appearance ? 0xffffff : Number(isActive ? (item?.activeTextColor ?? item?.textColor ?? HUD_TEXT_BRIGHT_COLOR) : (item?.textColor ?? HUD_TEXT_DEFAULT_COLOR)) >>> 0,
+          color: dock?.actionInk ?? (appearance ? 0xffffff : Number(isActive ? (item?.activeTextColor ?? item?.textColor ?? HUD_TEXT_BRIGHT_COLOR) : (item?.textColor ?? HUD_TEXT_DEFAULT_COLOR)) >>> 0),
+          fontWeight: dock ? "bold" : null,
           zLift: lift,
           renderOrder: hotbarRoBase + HUD_RENDER_ORDER_COLOR_LAYER_OFFSET,
         });
@@ -943,5 +977,5 @@ export function createHudWindowContentDispatchRuntime({
     return true;
   }
 
-  return { renderWindowContent };
+  return { renderWindowContent, dispose: dockPainter.dispose };
 }
