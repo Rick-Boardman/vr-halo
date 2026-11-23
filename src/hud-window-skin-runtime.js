@@ -237,8 +237,9 @@ export function getHudWindowControlRects(win, objs, titleH) {
     : null;
 
   let resize = null;
-  if (objs?.resizeHandle && !win.collapsed) {
-    const size = HUD_WINDOW_RESIZE_HANDLE_SIZE_PX;
+  if (objs?.resizeHandle && win.resizable !== false && !win.collapsed) {
+    const themed = !skinned && !!win.appearanceTokens?.controlChrome;
+    const size = themed ? 26 : HUD_WINDOW_RESIZE_HANDLE_SIZE_PX;
     resize = {
       x: win.x + win.w - size,
       y: win.y + windowH - size,

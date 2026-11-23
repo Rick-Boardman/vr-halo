@@ -36,6 +36,13 @@ export function createHudNativeControlTextures(THREE) {
       if (glyph === "min") { c.moveTo(26, 40); c.lineTo(54, 40); }
       if (glyph === "up") { c.moveTo(24, 46); c.lineTo(40, 29); c.lineTo(56, 46); }
       if (glyph === "down") { c.moveTo(24, 34); c.lineTo(40, 51); c.lineTo(56, 34); }
+      if (glyph === "resize") {
+        c.lineWidth = 6;
+        // Pin the three strong diagonal marks in the lower-right corner.
+        for (const d of [19, 31, 43]) {
+          c.moveTo(59 - d, 59); c.lineTo(59, 59 - d);
+        }
+      }
       c.stroke();
       if (glyph === "grip") {
         c.fillStyle = css(ink);

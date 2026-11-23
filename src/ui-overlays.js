@@ -649,12 +649,26 @@ export function createHudUiOverlays({
     return true;
   }
 
+  let savedResizeCursor;
+  function showResizeCursor(active) {
+    const style = renderer.domElement?.style;
+    if (!style) return;
+    if (active && (style.cursor === "" || style.cursor === "auto" || style.cursor === "default")) {
+      savedResizeCursor = style.cursor;
+      style.cursor = "nwse-resize";
+    } else if (!active && savedResizeCursor !== undefined) {
+      if (style.cursor === "nwse-resize") style.cursor = savedResizeCursor;
+      savedResizeCursor = undefined;
+    }
+  }
+
   function updateOverlayHover(pointer, dt) {
     const dot = getHudGlyphDotSizePx(renderer);
 
     // Context menu hover
     const menu = hud.overlay?.contextMenu;
     if (menu?.open) {
+      showResizeCursor(false);
       const pad = HUD_OVERLAY_PADDING_PX;
       const itemH = getHudTextLineHeightPx(dot);
       let idx = -1;
@@ -685,6 +699,7 @@ export function createHudUiOverlays({
     // Tooltip hover
     const tip = hud.overlay.tooltip;
     if (!pointer.active) {
+      showResizeCursor(false);
       if (tip.visible || tip.text) {
         tip.visible = false;
         tip.text = "";
@@ -847,6 +862,8 @@ export function createHudUiOverlays({
       break;
     }
 
+    showResizeCursor(!isVr && (hoverId.endsWith(":resize") ||
+      Object.values(hud.ui.windows).some(win => win.resizing && win.appearanceTokens?.controlChrome)));
     if (hoverId !== tip._hoverId) {
       tip._hoverId = hoverId;
       if (hud.ui?.theme?.contentTokens?.controlChrome) markDirty();

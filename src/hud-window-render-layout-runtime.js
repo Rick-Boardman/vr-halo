@@ -413,6 +413,16 @@ export function createHudWindowRenderLayoutRuntime({
     if (objs.resizeHandle) {
       const r = controlRects.resize;
       if (r && !win.collapsed) {
+        if (chrome) {
+          const colors = win.resizing
+            ? { fill:chrome.normal.ink, border:chrome.hover.border, ink:chrome.normal.fill }
+            : hovered === key + ":resize" ? chrome.hover : chrome.normal;
+          controlTextures.apply(objs.resizeHandle, "resize", colors);
+          // Body and scrollbar surfaces are emitted later in this same pass.
+          setMeshRenderOrder(objs.resizeHandle, roBase + HUD_RENDER_ORDER_TEXT_OFFSET + 8);
+        } else {
+          controlTextures.apply(objs.resizeHandle, "resize", null);
+        }
         objs.resizeHandle.visible = true;
         positionRect(objs.resizeHandle, r.x, r.y, r.w, r.h, HUD_Z_SURFACE_FG + lift);
       } else {
@@ -574,7 +584,8 @@ export function createHudWindowRenderLayoutRuntime({
     const cx = win.x + nsC + inset;
     const cy = win.y + (nsC || effectiveTitleH) + inset;
     // Reserve space for scrollbar on scrollable windows so text never overlaps it.
-    const scrollReserve = win.scrollable ? HUD_SCROLLBAR_RESERVED_WIDTH_PX : 0;
+    const nativeResizeReserve = chrome && controlRects.resize ? controlRects.resize.w : 0;
+    const scrollReserve = Math.max(win.scrollable ? HUD_SCROLLBAR_RESERVED_WIDTH_PX : 0, nativeResizeReserve);
     const cw = win.w - nsC * 2 - inset * 2 - scrollReserve;
     const ch = h - (nsC ? nsC * 2 : effectiveTitleH) - inset * 2;
 
@@ -617,7 +628,8 @@ export function createHudWindowRenderLayoutRuntime({
       const trackX = win.x + win.w - nsC - HUD_SCROLLBAR_RIGHT_INSET_PX;
       const contentTopY = nsC || effectiveTitleH;
       const trackY = win.y + contentTopY + HUD_SCROLLBAR_TRACK_TOP_INSET_PX;
-      const trackH = Math.max(0, h - contentTopY - HUD_SCROLLBAR_TRACK_TOP_INSET_PX - HUD_SCROLLBAR_TRACK_BOTTOM_INSET_PX - (nsC || 0));
+      const trackBottomInset = Math.max(HUD_SCROLLBAR_TRACK_BOTTOM_INSET_PX, nativeResizeReserve + (nativeResizeReserve ? 4 : 0));
+      const trackH = Math.max(0, h - contentTopY - HUD_SCROLLBAR_TRACK_TOP_INSET_PX - trackBottomInset - (nsC || 0));
       positionRect(
         objs.scrollTrack,
         trackX + (chrome ? 3 : 0),
