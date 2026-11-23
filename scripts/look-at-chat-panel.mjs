@@ -342,7 +342,10 @@ try {
       field: 0xffffff, fieldText: 0x0b2137, focus: 0x1d5790, selection: 0xc0dcfa,
       selectionOpacity: 0.72, selectionText: 0x0b2137, caret: 0x0b2137,
       accent: 0x245e96, accentText: 0xffffff, track: 0xdbe5ef, thumb: 0x506d89 };
-    hudSystem.hud.ui.windows["notes-editor-fixture"].contentBgColor = palette.surface;
+    const editor = hudSystem.hud.ui.windows["notes-editor-fixture"];
+    Object.assign(editor, { contentBgColor: palette.surface, panelBgColor: 0xc5d1df,
+      titleBarColor: 0xc7d8ea, titleTextColor: 0x1b304a });
+    hudSystem.hud.objects.windows["notes-editor-fixture"].contentBg.material.color.setHex(palette.surface);
     hudSystem.setWindowAppearanceTokens("notes-editor-fixture", palette);
     globalThis.__notesFixture = { sheet, note, palette, hud: hudSystem.hud };
   });
