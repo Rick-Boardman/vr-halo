@@ -1259,7 +1259,8 @@ export function createHudSystem(
     restoreAllHidden: () => _windowVisibilityRuntime.restoreAllHidden(),
   });
 
-  const { renderList: _renderList } = createHudRenderListRuntime({
+  const { renderList: _renderList, dispose: _disposeListAppearance } = createHudRenderListRuntime({
+    THREE,
     clamp,
     wrapEntriesToLines,
     parseHexColor,
@@ -1269,8 +1270,9 @@ export function createHudSystem(
     makeRect,
   });
 
-  const { renderWindowContent: _renderWindowContent } =
+  const { renderWindowContent: _renderWindowContent, dispose: _disposeHotbarDock } =
     createHudWindowContentDispatchRuntime({
+      THREE,
       hud,
       renderer,
       setPlainTextMaybeTroika: _setPlainTextMaybeTroika,
@@ -1283,7 +1285,8 @@ export function createHudSystem(
       getStatusMode: () => _statusMode,
     });
 
-  const { renderWindow: _renderWindow } = createHudWindowRenderLayoutRuntime({
+  const { renderWindow: _renderWindow, dispose: _disposeWindowChrome } = createHudWindowRenderLayoutRuntime({
+    THREE,
     hud,
     renderer,
     windowObjectVisibilityRuntime: _windowObjectVisibilityRuntime,
@@ -1395,6 +1398,9 @@ export function createHudSystem(
     renderDebugOverlay: _debugOverlayRuntime.renderDebugOverlay,
     handleResize: () => _resizeRuntime.handleResize(),
     dispose: () => {
+      _disposeListAppearance();
+      _disposeWindowChrome();
+      _disposeHotbarDock();
       _resizeRuntime.disposeAutoResize();
     },
     setNavigationHelpProfile: (profile) => _helpContentRuntime.setNavigationHelpProfile(profile),
@@ -1406,6 +1412,10 @@ export function createHudSystem(
     toggleWindow,
     setWindowCollapsed: (key, collapsed) => _windowVisibilityRuntime.setWindowCollapsed(key, collapsed),
     setWindowHidden: (key, hidden) => _windowVisibilityRuntime.setWindowHidden(key, hidden),
+    setWindowAppearanceTokens(windowKey, tokens = null) {
+      const win = hud.ui.windows?.[windowKey];
+      if (win) { win.appearanceTokens = tokens; hud._dirty = true; }
+    },
     setWindowLines: (windowKey, entries, options = {}) => _windowStateRuntime.setWindowLines(windowKey, entries, options),
     setWindowScrollTop: (windowKey, scrollTop, scrollMode = "manual") => _windowStateRuntime.setWindowScrollTop(windowKey, scrollTop, scrollMode),
     setWindowTextCaret: (windowKey, caretState) => _windowStateRuntime.setWindowTextCaret(windowKey, caretState),

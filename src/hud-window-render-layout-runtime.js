@@ -8,6 +8,7 @@
 // delegation to the render-list and content-dispatch runtimes.
 // -----------------------------------------------------------------
 
+import { createHudNativeControlTextures } from "./hud-native-control-textures.js";
 import { clamp } from "./scalar-math.js";
 import {
   HUD_OVERLAY_PADDING_PX,
@@ -68,6 +69,7 @@ const FOCUSED_TOP_RENDER_ORDER_BASE = 4000;
 export function createHudWindowRenderLayoutRuntime({
   hud,
   renderer,
+  THREE,
   windowObjectVisibilityRuntime,
   windowTextRenderOrderRuntime,
   setPlainTextMaybeTroika,
@@ -78,6 +80,7 @@ export function createHudWindowRenderLayoutRuntime({
   renderWindowContentFn,
 }) {
   const titleH = HUD_WINDOW_TITLE_HEIGHT_PX;
+  const controlTextures = createHudNativeControlTextures(THREE);
   const pad = HUD_OVERLAY_PADDING_PX;
 
   /**
@@ -120,6 +123,8 @@ export function createHudWindowRenderLayoutRuntime({
     }
 
     const labelDot = getHudGlyphDotSizePx(renderer);
+    const appearance = win.appearanceTokens;
+    const bodyDot = labelDot * (appearance ? 1.08 : 1);
     const titleDot = labelDot * HUD_TEXT_HEADER_FONT_SIZE_MULTIPLIER;
     const titleChrome = getHudWindowTitleChrome(win, objs, effectiveTitleH);
     const controlRects = getHudWindowControlRects(win, objs, effectiveTitleH);
@@ -326,32 +331,58 @@ export function createHudWindowRenderLayoutRuntime({
     if (objs.bevelBottom) objs.bevelBottom.visible = false;
     if (objs.bevelRight) objs.bevelRight.visible = false;
     if (objs.titleDivider) {
-      objs.titleDivider.visible = false;
-    }
-
-    if (Array.isArray(objs.titleDots)) {
-      const showTitleDots =
-        !isHotbar &&
-        effectiveTitleH > 0 &&
-        win.showTitleDots !== false &&
-        !titleChrome.skinned;
-      for (let index = 0; index < objs.titleDots.length; index += 1) {
-        const dot = objs.titleDots[index];
-        if (!dot) continue;
-        dot.visible = showTitleDots;
-        if (!showTitleDots) continue;
-        positionRect(
-          dot,
-          titleChrome.x + 8 + index * 7,
-          titleChrome.y + Math.floor((effectiveTitleH - 4) / 2),
-          4,
-          4,
-          0.00218 + lift
-        );
+      const divider = appearance?.headerDivider;
+      objs.titleDivider.visible = !isHotbar && !titleChrome.skinned && !win.collapsed && effectiveTitleH > 0 && Number.isFinite(divider);
+      if (objs.titleDivider.visible) {
+        objs.titleDivider.material?.color?.setHex(divider);
+        if (objs.titleDivider.material) objs.titleDivider.material.opacity = 1;
+        positionRect(objs.titleDivider, titleChrome.x, titleChrome.y + titleChrome.h - 1, titleChrome.w, 2, 0.00220 + lift);
       }
     }
 
     const controlSlotW = objs.nineSlice ? 18 : titleChrome.controlSlotW;
+    const chrome = !titleChrome.skinned ? appearance?.controlChrome : null;
+    const hovered = hud.overlay?.tooltip?._hoverId;
+    let nativeGripShown = false;
+    objs._titleGripHitRect = null;
+    if (Array.isArray(objs.titleDots)) {
+      const showTitleDots = !isHotbar && effectiveTitleH > 0 &&
+        win.showTitleDots !== false && !titleChrome.skinned;
+      nativeGripShown = !!(showTitleDots && chrome && win.draggable !== false);
+      for (let index = 0; index < objs.titleDots.length; index += 1) {
+        const dot = objs.titleDots[index];
+        if (!dot) continue;
+        if (index === 0 && nativeGripShown) {
+          // It is part of the existing title move target. Only its visual
+          // surface and hover region are new; never a second click hit region.
+          const height = Math.min(24, Math.max(14, effectiveTitleH - 2));
+          const grip = { x: titleChrome.x + titleChrome.edgeInset, y: titleChrome.y + (effectiveTitleH - height) / 2,
+            w: 25, h: height };
+          const colors = win.dragging
+            ? { fill:chrome.normal.ink, border:chrome.hover.border, ink:chrome.normal.fill }
+            : hovered === key + ":grip" ? chrome.hover : chrome.normal;
+          controlTextures.apply(dot, "grip", colors);
+          objs._titleGripHitRect = grip;
+          dot.visible = true;
+          positionRect(dot, grip.x, grip.y, grip.w, grip.h, 0.00218 + lift);
+        } else {
+          controlTextures.apply(dot, "grip", null);
+          dot.visible = showTitleDots && !chrome;
+          if (dot.visible) positionRect(dot, titleChrome.x + 8 + index * 7,
+            titleChrome.y + Math.floor((effectiveTitleH - 4) / 2), 4, 4, 0.00218 + lift);
+        }
+      }
+    }
+
+    controlTextures.apply(objs.closeBtn, "close", chrome ? (hovered === key + ":close" ? chrome.hover : chrome.normal) : null);
+    controlTextures.apply(objs.minBtn, "min", chrome ? (hovered === key + ":min" ? chrome.hover : chrome.normal) : null);
+    if (!titleChrome.skinned && Number.isFinite(appearance?.headerControl)) {
+      const hovered = hud.overlay?.tooltip?._hoverId;
+      for (const [part, target] of (chrome ? [["actionBtn", "action"]] : [["closeBtn", "close"], ["minBtn", "min"], ["actionBtn", "action"]])) {
+        const color = hovered === `${key}:${target}` ? (appearance.headerControlHover ?? appearance.headerControl) : appearance.headerControl;
+        objs[part]?.material?.color?.setHex(color);
+      }
+    }
 
     if (objs.closeBtn) {
       const r = controlRects.close;
@@ -382,6 +413,17 @@ export function createHudWindowRenderLayoutRuntime({
     if (objs.resizeHandle) {
       const r = controlRects.resize;
       if (r && !win.collapsed) {
+        if (chrome) {
+          const colors = win.resizing
+            ? { fill:chrome.normal.ink, border:chrome.hover.border, ink:chrome.normal.fill }
+            : hovered === key + ":resize" ? chrome.hover
+              : { ...chrome.normal, fill: appearance.surface ?? chrome.normal.fill };
+          controlTextures.apply(objs.resizeHandle, "resize", colors);
+          // Body and scrollbar surfaces are emitted later in this same pass.
+          setMeshRenderOrder(objs.resizeHandle, roBase + HUD_RENDER_ORDER_TEXT_OFFSET + 8);
+        } else {
+          controlTextures.apply(objs.resizeHandle, "resize", null);
+        }
         objs.resizeHandle.visible = true;
         positionRect(objs.resizeHandle, r.x, r.y, r.w, r.h, HUD_Z_SURFACE_FG + lift);
       } else {
@@ -396,11 +438,13 @@ export function createHudWindowRenderLayoutRuntime({
       (objs.actionBtn ? (key === "debug" ? 2 : 1) : 0);
     const titleStartX = key === "hotbar"
       ? win.x + pad
-      : titleChrome.x + (titleChrome.skinned ? 8 : 34);
-    const titleMaxW = Math.max(
-      0,
-      titleChrome.w - (btnSlots ? controlSlotW * btnSlots : 0) - (titleStartX - titleChrome.x) - 8
-    );
+      : titleChrome.x + (titleChrome.skinned ? 8 : nativeGripShown ? titleChrome.edgeInset + 25 + 10 : 34);
+    const nativeControls = [controlRects.action, controlRects.copy, controlRects.min, controlRects.close].filter(Boolean);
+    const titleRight = titleChrome.edgeInset
+      ? Math.min(titleChrome.x + titleChrome.w - titleChrome.edgeInset,
+        ...nativeControls.map(control => control.x - 8))
+      : titleChrome.x + titleChrome.w - (btnSlots ? controlSlotW * btnSlots : 0) - 8;
+    const titleMaxW = Math.max(0, titleRight - titleStartX);
     if (key === "hotbar") {
       // Hotbar is a strip, not a titled panel. Do not draw the title at all.
       // Hiding avoids a one-frame Troika update mismatch (content vs position)
@@ -409,9 +453,11 @@ export function createHudWindowRenderLayoutRuntime({
     } else {
       setPlainTextMaybeTroika({
         pixel: objs.titleText,
-        text: win.title || "",
+        text: titleChrome.edgeInset ? String(win.title || "").replace(/[\r\n]+/g, " ") : win.title || "",
         x: titleStartX,
         y: titleGlyphY,
+        inkCenterY: titleChrome.edgeInset ? titleChrome.y + titleChrome.h / 2 : null,
+        ellipsis: !!titleChrome.edgeInset,
         dot: titleDot,
         maxWidth: titleMaxW,
         color: titleChrome.skinned ? titlePoc.color : (win.titleTextColor ?? HUD_TEXT_DEFAULT_COLOR),
@@ -539,12 +585,14 @@ export function createHudWindowRenderLayoutRuntime({
     // For 9-slice windows the frame border is outside the content area.
     // Content rect is the inner region of the 9-slice; normal pad applies inside.
     const nsC = objs.nineSlice ? (objs.nineSlice.cornerSize || 24) : 0;
-    const cx = win.x + nsC + pad;
-    const cy = win.y + (nsC || effectiveTitleH) + pad;
+    const inset = appearance ? pad + 4 : pad;
+    const cx = win.x + nsC + inset;
+    const cy = win.y + (nsC || effectiveTitleH) + inset;
     // Reserve space for scrollbar on scrollable windows so text never overlaps it.
-    const scrollReserve = win.scrollable ? HUD_SCROLLBAR_RESERVED_WIDTH_PX : 0;
-    const cw = win.w - nsC * 2 - pad * 2 - scrollReserve;
-    const ch = h - (nsC ? nsC * 2 : effectiveTitleH) - pad * 2;
+    const nativeResizeReserve = chrome && controlRects.resize ? controlRects.resize.w : 0;
+    const scrollReserve = Math.max(win.scrollable ? HUD_SCROLLBAR_RESERVED_WIDTH_PX : 0, nativeResizeReserve);
+    const cw = win.w - nsC * 2 - inset * 2 - scrollReserve;
+    const ch = h - (nsC ? nsC * 2 : effectiveTitleH) - inset * 2;
 
     function placeScrollbar(totalLines, visibleLines, scrollTop, scrollActive) {
       if (!objs.scrollTrack || !objs.scrollThumb) return;
@@ -562,15 +610,36 @@ export function createHudWindowRenderLayoutRuntime({
       if (objs.scrollDownBtn) objs.scrollDownBtn.visible = true;
       objs.scrollThumb.visible = true;
 
+      const scrollParts = ["scrollTrack", "scrollThumb", "scrollUpBtn", "scrollDownBtn"];
+      if (appearance) {
+        objs._appearanceScrollColors ??= scrollParts.map(part => {
+          const m = objs[part]?.material;
+          return m ? { color: m.color?.getHex(), map: m.map, opacity: m.opacity } : null;
+        });
+        for (const part of ["scrollTrack", "scrollThumb"]) {
+          const m = objs[part]?.material;
+          if (!m) continue;
+          m.color?.setHex(part === "scrollTrack" ? appearance.track : (hovered === key + ":scroll-thumb" ? chrome?.thumbHover ?? appearance.thumb : appearance.thumb));
+          if (chrome) { if (m.map) { m.map = null; m.needsUpdate = true; } m.opacity = 1; }
+        }
+      } else if (objs._appearanceScrollColors) {
+        scrollParts.forEach((part, i) => {
+          const m = objs[part]?.material, base = objs._appearanceScrollColors[i];
+          if (!m || !base) return;
+          m.color?.setHex(base.color); m.map = base.map; m.opacity = base.opacity; m.needsUpdate = true;
+        });
+        delete objs._appearanceScrollColors;
+      }
       const trackX = win.x + win.w - nsC - HUD_SCROLLBAR_RIGHT_INSET_PX;
       const contentTopY = nsC || effectiveTitleH;
       const trackY = win.y + contentTopY + HUD_SCROLLBAR_TRACK_TOP_INSET_PX;
-      const trackH = Math.max(0, h - contentTopY - HUD_SCROLLBAR_TRACK_TOP_INSET_PX - HUD_SCROLLBAR_TRACK_BOTTOM_INSET_PX - (nsC || 0));
+      const trackBottomInset = Math.max(HUD_SCROLLBAR_TRACK_BOTTOM_INSET_PX, nativeResizeReserve + (nativeResizeReserve ? 4 : 0));
+      const trackH = Math.max(0, h - contentTopY - HUD_SCROLLBAR_TRACK_TOP_INSET_PX - trackBottomInset - (nsC || 0));
       positionRect(
         objs.scrollTrack,
-        trackX,
+        trackX + (chrome ? 3 : 0),
         trackY,
-        HUD_SCROLLBAR_TRACK_WIDTH_PX,
+        chrome ? 16 : appearance ? 8 : HUD_SCROLLBAR_TRACK_WIDTH_PX,
         trackH,
         HUD_Z_SURFACE_RECESSED + lift
       );
@@ -586,11 +655,13 @@ export function createHudWindowRenderLayoutRuntime({
 
       if (objs.scrollUpBtn) {
         positionRect(objs.scrollUpBtn, buttonX, upButtonY, buttonW, Math.max(0, arrowH), HUD_Z_SURFACE_BG + lift);
-        if (objs.scrollUpBtn.material) objs.scrollUpBtn.material.opacity = canUp ? 1 : 0.45;
+        controlTextures.apply(objs.scrollUpBtn, "up", chrome ? (canUp ? (hovered === key + ":scroll-up" ? chrome.hover : chrome.normal) : chrome.disabled) : null);
+        if (!chrome && objs.scrollUpBtn.material) objs.scrollUpBtn.material.opacity = canUp ? 1 : 0.45;
       }
       if (objs.scrollDownBtn) {
         positionRect(objs.scrollDownBtn, buttonX, downButtonY, buttonW, Math.max(0, arrowH), HUD_Z_SURFACE_BG + lift);
-        if (objs.scrollDownBtn.material) objs.scrollDownBtn.material.opacity = canDown ? 1 : 0.45;
+        controlTextures.apply(objs.scrollDownBtn, "down", chrome ? (canDown ? (hovered === key + ":scroll-down" ? chrome.hover : chrome.normal) : chrome.disabled) : null);
+        if (!chrome && objs.scrollDownBtn.material) objs.scrollDownBtn.material.opacity = canDown ? 1 : 0.45;
       }
 
       const denom = Math.max(1, totalLines);
@@ -603,9 +674,9 @@ export function createHudWindowRenderLayoutRuntime({
       const thumbY = thumbAreaTop + Math.round(frac * thumbMaxY);
       positionRect(
         objs.scrollThumb,
-        trackX + 3,
+        trackX + (chrome ? 6 : appearance ? 2 : 3),
         thumbY,
-        Math.max(0, HUD_SCROLLBAR_TRACK_WIDTH_PX - 6),
+        chrome ? 10 : appearance ? 5 : Math.max(0, HUD_SCROLLBAR_TRACK_WIDTH_PX - 6),
         thumbH,
         HUD_Z_SURFACE_BG + lift
       );
@@ -648,12 +719,12 @@ export function createHudWindowRenderLayoutRuntime({
       }
     }
 
-    const maxVisibleLines = Math.max(1, Math.floor(ch / (12 * labelDot)));
+    const maxVisibleLines = Math.max(1, Math.floor(ch / (12 * bodyDot)));
 
     const _rlCtx = {
       win,
       objs,
-      labelDot,
+      labelDot: bodyDot,
       cx,
       cy,
       cw,
@@ -676,5 +747,5 @@ export function createHudWindowRenderLayoutRuntime({
     });
   }
 
-  return { renderWindow };
+  return { renderWindow, dispose: controlTextures.dispose };
 }

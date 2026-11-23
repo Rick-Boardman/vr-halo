@@ -324,6 +324,99 @@ try {
   await page.waitForTimeout(400);
   step('and opens again', (await page.evaluate(() => globalThis.__haloChatPanel.isOpen())) === true, shot);
 
+  // A true native multiline field, including the existing Inspector popup.
+  await page.evaluate(async () => {
+    const { hudSystem, renderer } = globalThis.__haloChatExample;
+    globalThis.__haloChatPanel.close();
+    const { createHudPropertySheet } = await import('/src/ui/editor/index.js');
+    const note = "One line opens with something useful. A long continuation must wrap across the visible width. Last word.";
+    const sheet = createHudPropertySheet({
+      hudSystem, renderer, windowKey: "notes-fixture", editorWindowKey: "notes-editor-fixture",
+      sheetWindow: { x: 32, y: 48, w: 280, h: 290 },
+      editorWindow: { w: 360, h: 310 },
+      rows: [{ key: "notes", label: "Notes", kind: "multiline", value: note }],
+    });
+    sheet.show();
+    sheet.activateRow("notes");
+    const palette = { surface: 0xf8fafc, text: 0x22354a, row: 0xf1f5f9, selectedRow: 0xd7e7f8,
+      field: 0xffffff, fieldText: 0x0b2137, focus: 0x1d5790, selection: 0xc0dcfa,
+      selectionOpacity: 0.72, selectionText: 0x0b2137, caret: 0x0b2137,
+      accent: 0x245e96, accentText: 0xffffff, track: 0xdbe5ef, thumb: 0x506d89 };
+    hudSystem.hud.ui.windows["notes-editor-fixture"].contentBgColor = palette.surface;
+    hudSystem.setWindowAppearanceTokens("notes-editor-fixture", palette);
+    globalThis.__notesFixture = { sheet, note, palette, hud: hudSystem.hud };
+  });
+  await page.waitForFunction(() => {
+    const objs = globalThis.__notesFixture.hud.objects.windows["notes-editor-fixture"];
+    const tri = objs?._troikaContentText?._textMesh?.textRenderInfo;
+    return objs?._visibleLineMeta?.length > 1 && tri?.caretPositions?.length > 20;
+  });
+  const points = await page.evaluate(async () => {
+    const { hud } = globalThis.__notesFixture;
+    const { HUD_WINDOW_TITLE_HEIGHT_PX, HUD_OVERLAY_PADDING_PX, HUD_TEXT_ASCENDER_NUDGE_FACTOR,
+      getHudGlyphDotSizePx } = await import('/src/hud-layout-policy.js');
+    const glyphDot = getHudGlyphDotSizePx(globalThis.__haloChatExample.renderer);
+    const win = hud.ui.windows["notes-editor-fixture"];
+    const objs = hud.objects.windows["notes-editor-fixture"];
+    const tri = objs._troikaContentText._textMesh.textRenderInfo;
+    const rect = document.querySelector('canvas').getBoundingClientRect();
+    const cy = win.y + HUD_WINDOW_TITLE_HEIGHT_PX + HUD_OVERLAY_PADDING_PX;
+    const cx = win.x + HUD_OVERLAY_PADDING_PX;
+    const at = (x, y) => ({
+      x: rect.left + x / hud.layoutW * rect.width,
+      y: rect.top + y / hud.layoutH * rect.height,
+    });
+    const point = (i) => at(cx + tri.caretPositions[i * 4],
+      cy - (tri.caretPositions[i * 4 + 2] + tri.caretPositions[i * 4 + 3]) / 2
+        - 7 * glyphDot * HUD_TEXT_ASCENDER_NUDGE_FACTOR);
+    const last = objs._visibleLineMeta.at(-1);
+    const blank = at(cx + 4, cy + last.rowTopPx + last.rowHeightPx + 15);
+    return { from: point(4), to: point(8), blank };
+  });
+  await page.mouse.move(points.from.x, points.from.y);
+  await page.mouse.down();
+  await page.mouse.move(points.to.x, points.to.y, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForFunction(() => {
+    const { hud } = globalThis.__notesFixture;
+    return hud.objects.windows["notes-editor-fixture"]._troikaContentText._textMesh.textRenderInfo.glyphColors?.length;
+  });
+  const ink = await page.evaluate(async () => {
+    const THREE = await import("three");
+    const { hud, palette } = globalThis.__notesFixture;
+    const { hudContrastRatio } = await import('/src/hud-appearance-tokens.js');
+    const win = hud.ui.windows["notes-editor-fixture"];
+    const objs = hud.objects.windows["notes-editor-fixture"];
+    const mesh = objs._troikaContentText._textMesh;
+    const toLinear = (value) => new THREE.Color(value).getHex(THREE.LinearSRGBColorSpace);
+    const original = objs._visibleLineMeta[0].color;
+    const glyphs = new Set();
+    const raw = mesh.textRenderInfo.glyphColors;
+    for (let i = 0; i < raw.length; i += 3) glyphs.add((raw[i] << 16) | (raw[i+1] << 8) | raw[i+2]);
+    return {
+      selection: win._textSelection,
+      visibleRect: objs.selectionRects.some(rect => rect.visible),
+      base: hudContrastRatio(original, palette.surface) >= 4.5
+        && mesh.colorRanges[0] === toLinear(original) && glyphs.has(toLinear(original)),
+      selected: hudContrastRatio(palette.selectionText, palette.selection) >= 4.5
+        && mesh.colorRanges[4] === toLinear(palette.selectionText) && glyphs.has(toLinear(palette.selectionText)),
+      restored: mesh.colorRanges[8] === toLinear(original),
+    };
+  });
+  step("native Notes selection colors only the selected substring", ink.selection.startCol === 4
+    && ink.selection.endCol === 8 && ink.visibleRect && ink.base && ink.selected && ink.restored, JSON.stringify(ink));
+  await page.screenshot({ path: path.join(shotDir, "notes-light-partial-selection.png") });
+  await page.mouse.click(points.blank.x, points.blank.y);
+  await page.keyboard.press("!");
+  await page.keyboard.press("Control+Enter");
+  const appended = await page.evaluate(() => {
+    const { sheet, note } = globalThis.__notesFixture;
+    const ok = sheet.getValue("notes") === note + "!";
+    sheet.dispose();
+    return ok;
+  });
+  step("clicking below wrapped Notes appends at end of source", appended);
+
   const thrown = errors.filter((line) => !/Failed to load resource/i.test(line));
   step('nothing threw in the page', thrown.length === 0, thrown.slice(0, 2).join(' | ') || 'clean');
   console.log(`  shots in ${shotDir}`);

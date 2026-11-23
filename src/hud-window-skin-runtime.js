@@ -119,6 +119,7 @@ const TITLE_CONTROL_BTN_W = 18;
 const TITLE_CONTROL_BTN_H = 20;
 const TITLE_CONTROL_INSET_X = 2;
 const TITLE_CONTROL_INSET_Y = 4;
+const NATIVE_TITLE_EDGE_INSET_PX = 12;
 
 /**
  * @param {object | null | undefined} objs Window object set.
@@ -149,6 +150,7 @@ export function getHudWindowTitleChrome(win, objs, titleH) {
   const c = getHudNineSliceCornerSize(objs, win, titleH);
   const h = titleH;
   const skinned = !!objs?.nineSlice;
+  const edgeInset = !skinned && win.appearanceTokens?.controlChrome ? NATIVE_TITLE_EDGE_INSET_PX : 0;
   if (!c) {
     return {
       x: win.x,
@@ -156,6 +158,7 @@ export function getHudWindowTitleChrome(win, objs, titleH) {
       w: win.w,
       h,
       inset: 0,
+      edgeInset,
       skinned,
       dragH: h,
       controlSlotW: TITLE_CONTROL_SLOT_W,
@@ -171,6 +174,7 @@ export function getHudWindowTitleChrome(win, objs, titleH) {
     w: Math.max(1, win.w - 2 * c),
     h,
     inset: c,
+    edgeInset,
     skinned,
     dragH: Math.max(h, c),
     controlSlotW: TITLE_CONTROL_SLOT_W,
@@ -222,8 +226,10 @@ export function getHudWindowControlRects(win, objs, titleH) {
 
   function slotRect(slotFromRight) {
     return {
-      x: chrome.x + chrome.w - slotW * slotFromRight + insetX,
-      y: chrome.y + insetY,
+      x: chrome.edgeInset
+        ? chrome.x + chrome.w - chrome.edgeInset - btnW - slotW * (slotFromRight - 1)
+        : chrome.x + chrome.w - slotW * slotFromRight + insetX,
+      y: chrome.y + (chrome.edgeInset ? (chrome.h - btnH) / 2 : insetY),
       w: btnW,
       h: btnH,
     };
@@ -237,8 +243,9 @@ export function getHudWindowControlRects(win, objs, titleH) {
     : null;
 
   let resize = null;
-  if (objs?.resizeHandle && !win.collapsed) {
-    const size = HUD_WINDOW_RESIZE_HANDLE_SIZE_PX;
+  if (objs?.resizeHandle && win.resizable !== false && !win.collapsed) {
+    const themed = !skinned && !!win.appearanceTokens?.controlChrome;
+    const size = themed ? 26 : HUD_WINDOW_RESIZE_HANDLE_SIZE_PX;
     resize = {
       x: win.x + win.w - size,
       y: win.y + windowH - size,

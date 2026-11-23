@@ -2,6 +2,9 @@
 // Internal UI overlays (Tooltip + Context Menu).
 // Extracted from hud.js for Phase 2 modularization.
 
+import { getTextRenderInfo } from "troika-three-text";
+import { contrastHudInk } from "./hud-appearance-tokens.js";
+
 import {
   HUD_OVERLAY_PADDING_PX,
   HUD_WINDOW_TITLE_HEIGHT_PX,
@@ -13,7 +16,7 @@ import {
   getHudGlyphDotSizePx,
   getHudTextLineHeightPx,
 } from "./hud-layout-policy.js";
-import { HUD_TEXT_DEFAULT_COLOR, HUD_TEXT_DISABLED_COLOR } from "./hud-text-style.js";
+import { HUD_TEXT_DEFAULT_COLOR, HUD_TEXT_DISABLED_COLOR, HUD_TEXT_SDF_GLYPH_SIZE } from "./hud-text-style.js";
 import { estimateTextWidthPx } from "./text-measurement.js";
 import { getHudWindowControlRects } from "./hud-window-skin-runtime.js";
 
@@ -75,6 +78,7 @@ export function createHudUiOverlays({
   // Clipboard/actions
   copyTextToClipboard,
   normalizeEntriesToText,
+  measureTooltipText = typeof document === "undefined" ? null : getTextRenderInfo,
 } = {}) {
   const titleH = HUD_WINDOW_TITLE_HEIGHT_PX;
 
@@ -101,6 +105,38 @@ export function createHudUiOverlays({
     };
   }
 
+  const tooltipMetrics = new Map();
+  const pendingTooltipMetrics = new Set();
+  function getTooltipWidth(line, dot, pixel, measure) {
+    if (!line) return 0;
+    const mesh = pixel?._textMesh;
+    const key = JSON.stringify([line, dot, mesh?.font, mesh?.fontWeight]);
+    const exact = tooltipMetrics.get(key);
+    if (exact != null) return exact;
+    if (measure && measureTooltipText && pendingTooltipMetrics.size < 32 && !pendingTooltipMetrics.has(key)) {
+      pendingTooltipMetrics.add(key);
+      try {
+        measureTooltipText({
+          text: line, font: mesh?.font, fontWeight: mesh?.fontWeight,
+          fontSize: 7 * dot, sdfGlyphSize: HUD_TEXT_SDF_GLYPH_SIZE,
+          unicodeFontsURL: mesh?.unicodeFontsURL, whiteSpace: "nowrap",
+        }, info => {
+          pendingTooltipMetrics.delete(key);
+          const [, , inkRight] = info?.visibleBounds ?? [];
+          const [, , advanceRight] = info?.blockBounds ?? [];
+          const width = Math.max(0, Number(inkRight) || 0, Number(advanceRight) || 0);
+          if (width > 0) {
+            if (tooltipMetrics.size >= 256) tooltipMetrics.delete(tooltipMetrics.keys().next().value);
+            tooltipMetrics.set(key, Math.ceil(width) + 2);
+            markDirty?.();
+          }
+        });
+      } catch { pendingTooltipMetrics.delete(key); }
+    }
+    // Until Troika resolves the font, reserve more space than the old pixel-cell estimate.
+    return Math.ceil(estimateTextWidthPx(line, dot) * 1.25 + 4);
+  }
+
   function layoutTooltip() {
     const tip = hud.overlay?.externalTooltip?.visible
       ? hud.overlay.externalTooltip
@@ -112,6 +148,7 @@ export function createHudUiOverlays({
     if (!tip?.visible || (!hasEntries && !hasText) || !o) {
       setVrVirtualWindowState?.("__tooltip", null);
       if (o) {
+        if (o.tooltipOutline) o.tooltipOutline.visible = false;
         o.tooltipBg.visible = false;
         o.tooltipText.mesh.visible = false;
         hideColorLayers(o);
@@ -122,22 +159,27 @@ export function createHudUiOverlays({
     }
 
     const isVr = !!renderer.xr.isPresenting;
-    const dot = getHudGlyphDotSizePx(renderer);
+    const appearance = hud.ui?.theme?.contentTokens;
+    const dot = getHudGlyphDotSizePx(renderer) * (appearance ? 1.12 : 1);
     const pad = HUD_OVERLAY_PADDING_PX;
+    const padX = pad + (appearance ? 4 : 0);
+    const lineWidth = (text, measure = false) => appearance
+      ? getTooltipWidth(text, dot, o.tooltipText, measure) : estimateTextWidthPx(text, dot);
 
     const entries = hasEntries ? tip.entries : null;
     // Long tooltip lines wrap at a fixed text width instead of stretching
     // the tip across the HUD (from Aether Forge, 2026-10).
     // `hud.ui.data.tooltipTextWidthPx` changes the width; default 260.
-    const tipTextW = Math.max(80, Number(hud.ui?.data?.tooltipTextWidthPx) || 260);
+    const wantedTipTextW = Math.max(80, Number(hud.ui?.data?.tooltipTextWidthPx) || 260);
+    const tipTextW = appearance ? Math.min(wantedTipTextW, Math.max(1, hud.layoutW - pad * 2 - padX * 2)) : wantedTipTextW;
     const wrapTip = (line) => {
       const raw = String(line ?? "");
-      if (!raw || estimateTextWidthPx(raw, dot) <= tipTextW) return [raw];
+      if (!raw || lineWidth(raw) <= tipTextW) return [raw];
       const out = [];
       let current = "";
       for (const word of raw.split(/\s+/)) {
         const next = current ? `${current} ${word}` : word;
-        if (current && estimateTextWidthPx(next, dot) > tipTextW) {
+        if (current && lineWidth(next) > tipTextW) {
           out.push(current);
           current = word;
         } else {
@@ -145,15 +187,24 @@ export function createHudUiOverlays({
         }
       }
       if (current) out.push(current);
-      return out.length ? out : [raw];
+      if (!appearance) return out.length ? out : [raw];
+      return (out.length ? out : [raw]).flatMap(part => {
+        const chunks = []; let next = "";
+        for (const glyph of part) {
+          if (next && lineWidth(next + glyph) > tipTextW) { chunks.push(next); next = ""; }
+          next += glyph;
+        }
+        if (next) chunks.push(next);
+        return chunks;
+      });
     };
     const lines = (entries
       ? entries.map((e) => String((typeof e === "object" && e ? e.text : e) ?? ""))
       : String(tip.text ?? "").split("\n")
     ).flatMap(wrapTip);
 
-    const textW = lines.reduce((m, s) => Math.max(m, estimateTextWidthPx(s, dot)), 0);
-    const w = clamp(Math.min(textW, tipTextW) + pad * 2, 80, Math.max(80, hud.layoutW - 20));
+    const textW = lines.reduce((m, line) => Math.max(m, lineWidth(line, true)), 0);
+    const w = clamp(Math.min(textW, tipTextW) + padX * 2, 80, Math.max(80, hud.layoutW - 20));
     const lineH = getHudTextLineHeightPx(dot);
     const h = clamp(
       lines.length * lineH + pad * 2,
@@ -171,6 +222,7 @@ export function createHudUiOverlays({
     // (Otherwise they can snap to 0/0 or flicker when upstream coords go invalid.)
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       setVrVirtualWindowState?.("__tooltip", null);
+      if (o.tooltipOutline) o.tooltipOutline.visible = false;
       o.tooltipBg.visible = false;
       o.tooltipText.mesh.visible = false;
       hideColorLayers(o);
@@ -264,6 +316,25 @@ export function createHudUiOverlays({
       setVrVirtualWindowState?.("__tooltip", null);
     }
 
+    const material = o.tooltipBg.material;
+    const surface = appearance?.tooltipSurface ?? appearance?.surface;
+    const ink = appearance?.tooltipText ?? appearance?.text;
+    if (appearance && material) {
+      o._legacyTooltipStyle ??= { color: material.color.getHex(), opacity: material.opacity };
+      material.color.setHex(surface);
+      material.opacity = 1;
+    } else if (material && o._legacyTooltipStyle) {
+      material.color.setHex(o._legacyTooltipStyle.color);
+      material.opacity = o._legacyTooltipStyle.opacity;
+      delete o._legacyTooltipStyle;
+    }
+    if (o.tooltipOutline) {
+      o.tooltipOutline.visible = !!appearance;
+      if (appearance) {
+        o.tooltipOutline.material.color.setHex(appearance.tooltipBorder ?? appearance.fieldBorder ?? ink);
+        positionRect(o.tooltipOutline, x - 1, y - 1, w + 2, h + 2, 0.00595);
+      }
+    }
     positionRect(o.tooltipBg, x, y, w, h, 0.006);
 
     if (entries) {
@@ -271,12 +342,18 @@ export function createHudUiOverlays({
       o.tooltipText.mesh.visible = true;
       setColoredMultilineText({
         objs: o,
-        entries,
-        x: x + pad,
+        entries: appearance ? entries.flatMap(raw => {
+          const entry = typeof raw === "object" && raw ? raw : { text: raw };
+          return String(entry.text ?? "").split("\n").flatMap(wrapTip).map(text => ({
+            text, color: contrastHudInk(entry.color, surface, ink),
+          }));
+        }) : entries,
+        x: x + padX,
         y: y + pad,
         dot,
-        maxWidth: Math.max(0, w - pad * 2),
-        defaultColor: HUD_TEXT_DEFAULT_COLOR,
+        // Native lines are already bounded here. Do not apply a second glyph clip.
+        maxWidth: appearance ? null : Math.max(0, w - padX * 2),
+        defaultColor: ink ?? HUD_TEXT_DEFAULT_COLOR,
       });
     } else {
       // Plain text tooltip.
@@ -285,11 +362,12 @@ export function createHudUiOverlays({
       setPlainTextMaybeTroika({
         pixel: o.tooltipText,
         text: lines.join("\n"),
-        x: x + pad,
+        x: x + padX,
         y: y + pad,
         dot,
-        maxWidth: Math.max(0, w - pad * 2),
-        color: HUD_TEXT_DEFAULT_COLOR,
+        // Native lines are already bounded here. Do not apply a second glyph clip.
+        maxWidth: appearance ? null : Math.max(0, w - padX * 2),
+        color: ink ?? HUD_TEXT_DEFAULT_COLOR,
         zLift: 0,
         renderOrder: 9010,
         truncateSingleLine: false,
@@ -571,12 +649,26 @@ export function createHudUiOverlays({
     return true;
   }
 
+  let savedResizeCursor;
+  function showResizeCursor(active) {
+    const style = renderer.domElement?.style;
+    if (!style) return;
+    if (active && (style.cursor === "" || style.cursor === "auto" || style.cursor === "default")) {
+      savedResizeCursor = style.cursor;
+      style.cursor = "nwse-resize";
+    } else if (!active && savedResizeCursor !== undefined) {
+      if (style.cursor === "nwse-resize") style.cursor = savedResizeCursor;
+      savedResizeCursor = undefined;
+    }
+  }
+
   function updateOverlayHover(pointer, dt) {
     const dot = getHudGlyphDotSizePx(renderer);
 
     // Context menu hover
     const menu = hud.overlay?.contextMenu;
     if (menu?.open) {
+      showResizeCursor(false);
       const pad = HUD_OVERLAY_PADDING_PX;
       const itemH = getHudTextLineHeightPx(dot);
       let idx = -1;
@@ -607,6 +699,7 @@ export function createHudUiOverlays({
     // Tooltip hover
     const tip = hud.overlay.tooltip;
     if (!pointer.active) {
+      showResizeCursor(false);
       if (tip.visible || tip.text) {
         tip.visible = false;
         tip.text = "";
@@ -663,6 +756,14 @@ export function createHudUiOverlays({
         break;
       }
 
+      const titleGrip = objs?._titleGripHitRect;
+      if (titleGrip && w.draggable && !w.dragging &&
+        rectContains(titleGrip.x, titleGrip.y, titleGrip.w, titleGrip.h, pointer.x, pointer.y)) {
+        hoverId = `${key}:grip`;
+        hoverText = "Drag panel";
+        break;
+      }
+
       // Resize — same rect as the drawn grip (9-slice windows inset the handle).
       const resizeRect = controls.resize;
       if (
@@ -684,6 +785,11 @@ export function createHudUiOverlays({
         const trackH = metrics?.trackH ?? Math.max(0, h - titleH - HUD_SCROLLBAR_RESERVED_WIDTH_PX);
         if (rectContains(trackX, trackY, HUD_SCROLLBAR_TRACK_WIDTH_PX, trackH, pointer.x, pointer.y)) {
           hoverId = `${key}:scroll`;
+          if (metrics && w.appearanceTokens?.controlChrome) {
+            if (pointer.y >= metrics.upButtonY && pointer.y <= metrics.upButtonY + metrics.arrowH) hoverId += "-up";
+            else if (pointer.y >= metrics.downButtonY && pointer.y <= metrics.downButtonY + metrics.arrowH) hoverId += "-down";
+            else if (pointer.y >= metrics.thumbY && pointer.y <= metrics.thumbY + metrics.thumbH) hoverId += "-thumb";
+          }
           hoverText = "Scroll";
           break;
         }
@@ -756,8 +862,11 @@ export function createHudUiOverlays({
       break;
     }
 
+    showResizeCursor(!isVr && (hoverId.endsWith(":resize") ||
+      Object.values(hud.ui.windows).some(win => win.resizing && win.appearanceTokens?.controlChrome)));
     if (hoverId !== tip._hoverId) {
       tip._hoverId = hoverId;
+      if (hud.ui?.theme?.contentTokens?.controlChrome) markDirty();
       tip._hoverVrZ = hoverVrZ;
       tip._timer = 0;
       if (tip.visible) {

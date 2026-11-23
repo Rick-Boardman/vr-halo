@@ -71,3 +71,18 @@ exports and option documentation rather than inventing APIs. Reuse shared
 runtime and graph primitives, keep application policy in the application,
 and report the checks you actually ran. Public hosted URLs may track a moving
 release; use a tagged package for reproducible applications.
+
+### Optional HUD list appearance tokens
+
+After creating a window, call `hudSystem.setWindowAppearanceTokens(key, tokens)`
+to style its native body and list chrome. Set `tokens` to `null` to return to
+standalone defaults; the window's background is controlled separately.
+Use opaque numeric RGB colors for `surface`, `text`, `row`, `selectedRow`,
+`field`, `fieldText`, `accent`, `accentText`, `track`, and `thumb`. Pass a
+complete palette. This opt-in retains the source rows and actions and adjusts
+their displayed colors for contrast. Use high-contrast palette pairs.
+
+Tokens may also specify `fieldBorder` and `focus` for button outlines;
+`selection`, `selectionOpacity`, `selectionText`, and `caret` for text editing;
+and `disabledField`, `disabledText`, `hotbarFill`, and `hotbarActive` for
+controls. Themed controls keep their layout and pointer targets.

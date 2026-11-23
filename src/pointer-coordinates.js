@@ -11,7 +11,7 @@
 export function getNormalizedClientPoint(clientX, clientY, domElement) {
   if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
   const rect = domElement?.getBoundingClientRect?.();
-  if (!rect) return null;
+  if (!validClientRect(rect)) return null;
 
   return {
     // Normalize client pixels into element space with x = (clientX - left) / width
@@ -19,6 +19,25 @@ export function getNormalizedClientPoint(clientX, clientY, domElement) {
     x: (clientX - rect.left) / rect.width,
     y: (clientY - rect.top) / rect.height,
   };
+}
+
+function validClientRect(rect) {
+  return Number.isFinite(rect?.left) && Number.isFinite(rect?.top) &&
+    Number.isFinite(rect?.width) && rect.width > 0 &&
+    Number.isFinite(rect?.height) && rect.height > 0;
+}
+
+export function projectClientPointToHud(clientX, clientY, domElement, layoutW, layoutH) {
+  const point = getNormalizedClientPoint(Number(clientX), Number(clientY), domElement);
+  if (!point || !Number.isFinite(layoutW) || layoutW <= 0 ||
+      !Number.isFinite(layoutH) || layoutH <= 0) return null;
+  return { x: point.x * layoutW, y: point.y * layoutH };
+}
+
+export function projectNdcToClient(point, rect) {
+  if (!validClientRect(rect) || !Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return null;
+  return { x: rect.left + (point.x + 1) * 0.5 * rect.width,
+    y: rect.top + (1 - (point.y + 1) * 0.5) * rect.height };
 }
 
 /**

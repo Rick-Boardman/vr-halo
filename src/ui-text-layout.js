@@ -289,14 +289,37 @@ export function wrapEntriesToLines({ entries, dot, maxWidth, defaultColor }) {
     const parts = entryWidthBudget != null
       ? wrapLinePreserveIndentByWidth(l.text, entryWidthBudget, dot)
       : [l.text];
+    const hasSource = l.sourceText != null;
+    const sourcePrefix = l.displayPrefixLength ?? 0;
+    const indent = l.text.match(/^\s*/)?.[0] ?? "";
+    let consumed = 0;
     for (let i = 0; i < parts.length; i++) {
+      // Continuations repeat visible indentation; discarded whitespace between
+      // fragments still belongs to the source. Track offsets without inserting
+      // a hard newline into the document.
+      const repeat = i > 0 && parts[i].startsWith(indent) ? indent.length : 0;
+      const fragment = parts[i].slice(repeat);
+      const found = l.text.indexOf(fragment, consumed);
+      const displayStart = found < 0 ? consumed : found;
+      consumed = displayStart + fragment.length;
+      const hiddenPrefix = Math.max(0, Math.min(fragment.length, sourcePrefix - displayStart));
+      const sourceStart = Math.max(0, displayStart - sourcePrefix);
+      const sourceEnd = sourceStart + fragment.length - hiddenPrefix;
+      const partSource = hasSource ? l.sourceText.slice(sourceStart, sourceEnd) : undefined;
+      const displayPrefixLength = repeat + hiddenPrefix;
+      const colorRanges = l.colorRanges?.flatMap((range) => {
+        const start = Math.max(range.start, displayStart);
+        const end = Math.min(range.end, consumed);
+        return end > start ? [{ start: repeat + start - displayStart, end: repeat + end - displayStart, color: range.color }] : [];
+      });
       out.push({
         text: parts[i],
         color: l.color,
-        sourceText: i === 0 && l.sourceText != null ? l.sourceText : undefined,
-        displayPrefixLength: i === 0 && Number.isFinite(l.displayPrefixLength)
-          ? l.displayPrefixLength
-          : undefined,
+        sourceText: partSource,
+        sourceRow: hasSource ? entryIndex : undefined,
+        sourceStartCol: hasSource ? sourceStart : undefined,
+        displayPrefixLength: hasSource ? displayPrefixLength : undefined,
+        colorRanges,
         toggleKey: i === 0 ? toggleKey : null,
         hoverText,
         onClick,
@@ -313,6 +336,8 @@ export function wrapEntriesToLines({ entries, dot, maxWidth, defaultColor }) {
         actionButtonTextInsetPx: i === 0 ? actionButtonTextInsetPx : null,
         actionButtonIconFitMode: i === 0 ? actionButtonIconFitMode : null,
         actionButtonForceVisible: i === 0 ? actionButtonForceVisible : false,
+        accordionRole: i === 0 ? src?.accordionRole : null,
+        accordionSelected: i === 0 && src?.accordionSelected === true,
         rowBgColor,
         rowBgOpacity,
         rowHeightPx: i === 0 ? rowHeightPx : null,

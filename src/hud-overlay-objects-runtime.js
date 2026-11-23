@@ -27,6 +27,7 @@ export function createHudOverlayObjectsRuntime({
 } = {}) {
   function createOverlayObjects() {
     const overlay = {
+      tooltipOutline: makeRect({ x: 0, y: 0, w: 10, h: 10, color: 0xffffff, opacity: 1, z: 0.00595, order: 8999 }),
       tooltipBg: makeRect({
         x: 0,
         y: 0,
@@ -62,6 +63,7 @@ export function createHudOverlayObjectsRuntime({
       menuTextDisabled: new TroikaPixelText({ color: textDisabledColor, z: 0.007, depthTest: false }),
     };
 
+    overlay.tooltipOutline.userData.windowKey = "__tooltip";
     overlay.tooltipBg.userData.windowKey = "__tooltip";
     overlay.tooltipText.mesh.userData.windowKey = "__tooltip";
     overlay.menuBg.userData.windowKey = "__menu";
@@ -69,6 +71,7 @@ export function createHudOverlayObjectsRuntime({
     overlay.menuTextEnabled.mesh.userData.windowKey = "__menu";
     overlay.menuTextDisabled.mesh.userData.windowKey = "__menu";
 
+    overlay.tooltipOutline.visible = false;
     overlay.tooltipBg.visible = false;
     overlay.menuBg.visible = false;
     overlay.menuHover.visible = false;

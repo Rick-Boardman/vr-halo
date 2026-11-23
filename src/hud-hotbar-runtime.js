@@ -14,6 +14,7 @@ import { HUD_PRIMARY_HIGHLIGHT_COLOR } from "./hud-highlight-style.js";
 import { HUD_SURFACE_ACCENT_COLOR } from "./hud-surface-style.js";
 import { rectContains } from "./hud-format.js";
 import { clamp } from "./scalar-math.js";
+import { resolveHotbarDock } from "./hud-hotbar-appearance.js";
 import { estimateTextWidthPx, HUD_TEXT_ESTIMATE_GAP_PX } from "./text-measurement.js";
 
 const HOTBAR_HEADER_TEXT_OFFSET_X_PX = 44;
@@ -27,6 +28,7 @@ const HOTBAR_HEADER_COMPACT_RIGHT_GUTTER_PX = 88;
 const HOTBAR_HEADER_GUTTER_RIGHT_PADDING_PX = 18;
 const HOTBAR_STATUS_GUTTER_PADDING_PX = 22;
 const HOTBAR_STATUS_MIN_WIDTH_PX = 92;
+const HOTBAR_NATIVE_STATUS_MAX_WIDTH_PX = 228;
 const HOTBAR_WINDOW_VERTICAL_PADDING_PX = 8;
 const HOTBAR_WINDOW_CHROME_VERTICAL_PADDING_PX = 10;
 const HOTBAR_SPACER_MIN_WIDTH_PX = 8;
@@ -114,7 +116,10 @@ export function createHudHotbarRuntime({
     const resolved = String(status ?? "").trim();
     if (!resolved) return 0;
     const badgeTextW = estimateTextWidthPx(resolved, HOTBAR_STATUS_TEXT_DOT_PX, HUD_TEXT_ESTIMATE_GAP_PX);
-    return Math.max(HOTBAR_STATUS_MIN_WIDTH_PX, badgeTextW + 28);
+    const win = hud?.ui?.windows?.hotbar;
+    const tokens = win?.panelTheme === false ? null : (win?.appearanceTokens ?? hud?.ui?.theme?.contentTokens);
+    const width = Math.max(HOTBAR_STATUS_MIN_WIDTH_PX, badgeTextW + 28);
+    return resolveHotbarDock(hud?.ui?.theme?.key, tokens) ? Math.min(width, HOTBAR_NATIVE_STATUS_MAX_WIDTH_PX) : width;
   }
 
   function getPreferredLeftGutterPx(pad = HUD_OVERLAY_PADDING_PX) {

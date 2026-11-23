@@ -156,6 +156,7 @@ export function createHudPropertySheet(options) {
   let dateChooserTextures = [];
   let pickerArrowDownTexture = null;
   let pickerArrowUpTexture = null;
+  const themedPickerArrows = new Map();
 
   const handleInlineTextKeyDown = (event) => {
     if (isDateChooserEdit()) {
@@ -1344,7 +1345,8 @@ export function createHudPropertySheet(options) {
   }
 
   function disposePickerArrowTextures() {
-    const textures = [pickerArrowDownTexture, pickerArrowUpTexture];
+    const textures = [pickerArrowDownTexture, pickerArrowUpTexture, ...themedPickerArrows.values()];
+    themedPickerArrows.clear();
     for (const texture of textures) {
       try {
         texture?.dispose?.();
@@ -1432,7 +1434,7 @@ export function createHudPropertySheet(options) {
     };
   }
 
-  function drawPickerArrowTexture(ctx, direction) {
+  function drawPickerArrowTexture(ctx, direction, themed = false) {
     ctx.beginPath();
     ctx.moveTo(20, 0);
     ctx.lineTo(68, 0);
@@ -1444,7 +1446,7 @@ export function createHudPropertySheet(options) {
     ctx.lineTo(8, 12);
     ctx.quadraticCurveTo(8, 0, 20, 0);
     ctx.closePath();
-    ctx.fillStyle = "rgba(83,179,203,0.92)";
+    ctx.fillStyle = themed ? "#1c3249" : "rgba(83,179,203,0.92)";
     ctx.fill();
 
     ctx.beginPath();
@@ -1463,6 +1465,10 @@ export function createHudPropertySheet(options) {
   }
 
   function getPickerArrowTexture(direction = "down") {
+    if (typeof hudSystem?.setWindowAppearanceTokens === "function" && hudSystem?.hud?.ui?.windows?.[mainWindowKey]?.appearanceTokens) {
+      if (!themedPickerArrows.has(direction)) themedPickerArrows.set(direction, createHudCanvasTexture(88, 80, ctx => drawPickerArrowTexture(ctx, direction, true)));
+      return themedPickerArrows.get(direction);
+    }
     if (direction === "up") {
       if (!pickerArrowUpTexture) {
         pickerArrowUpTexture = createHudCanvasTexture(88, 80, (ctx) => {

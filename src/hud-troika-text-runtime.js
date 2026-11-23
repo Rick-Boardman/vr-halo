@@ -51,6 +51,41 @@ import {
   HUD_Z_WINDOW_BG,
 } from "./hud-layout-policy.js";
 
+/** Convert Halo's half-open spans to Troika's persistent start-index palette. Later spans win. */
+export function toTroikaColorRanges(ranges, textLength, baseColor) {
+  if (!Array.isArray(ranges) || !ranges.length || !textLength) return null;
+  const limit = (value) => Math.max(0, Math.min(textLength, Math.floor(Number(value) || 0)));
+  const events = new Map();
+  const add = (key, change) => {
+    if (!events.has(key)) events.set(key, []);
+    events.get(key).push(change);
+  };
+  ranges.forEach((range, index) => {
+    const start = limit(range.start);
+    const end = limit(range.end);
+    if (start >= end) return;
+    add(start, [index, Number(range.color ?? baseColor) >>> 0]);
+    add(end, [index, null]);
+  });
+  if (!events.size) return null;
+  if (!events.has(0)) events.set(0, []);
+  const result = {};
+  const active = new Map();
+  let previous;
+  for (const position of [...events.keys()].sort((a, b) => a - b)) {
+    for (const [index, color] of events.get(position)) {
+      if (color == null) active.delete(index);
+      else active.set(index, color);
+    }
+    if (position === textLength) break;
+    const last = [...active.keys()].reduce((max, index) => Math.max(max, index), -1);
+    const color = active.get(last) ?? baseColor;
+    if (color !== previous) result[position] = color;
+    previous = color;
+  }
+  return result;
+}
+
 export function createHudTroikaTextRuntime({
   THREE,
   hud,
@@ -232,6 +267,10 @@ export function createHudTroikaTextRuntime({
     outlineColor = 0x000000,
     outlineOpacity = 0,
     fontWeight = null,
+    inkCenterX = null,
+    inkCenterY = null,
+    inkFitWidth = null,
+    ellipsis = false,
   }) {
     if (!pixel) return;
     // Troika-only text path.
@@ -268,6 +307,10 @@ export function createHudTroikaTextRuntime({
       outlineColor,
       outlineOpacity,
       fontWeight,
+      inkCenterX,
+      inkCenterY,
+      inkFitWidth,
+      ellipsis,
     });
   }
 
@@ -394,6 +437,7 @@ export function createHudTroikaTextRuntime({
     maxWidth,
     defaultColor = HUD_TEXT_DEFAULT_COLOR,
     colorRanges = null,
+    forceSharedLayout = false,
   }) {
     const zLift = objs && Number.isFinite(objs._zLift) ? Number(objs._zLift) : 0;
     const roTextBase =
@@ -417,7 +461,7 @@ export function createHudTroikaTextRuntime({
       return lineColor !== resolvedDefaultColor;
     });
 
-    if (hasPerLineColors && !hasInlineColorRanges && !hasInheritedColorRanges) {
+    if (hasPerLineColors && !hasInlineColorRanges && !hasInheritedColorRanges && !forceSharedLayout) {
       _ensureTroikaThreeTextLoading();
       hideColorLayers(objs);
       hideLegacyColoredTextMeshes(objs);
@@ -696,6 +740,8 @@ export function createHudTroikaTextRuntime({
       if (!TextCtor) throw new Error("TroikaPixelText: Text ctor not ready");
 
       this._textMesh = new TextCtor();
+      this._inkCenter = null;
+      this._textMesh.addEventListener?.("synccomplete", () => this._applyInkCenter(true));
       this._textMesh.text = "";
       this._textMesh.anchorX = "left";
       this._textMesh.anchorY = "top";
@@ -851,7 +897,26 @@ export function createHudTroikaTextRuntime({
     * @param {Array|null} [opts.colorRanges] — per-char color ranges
     * @param {boolean} [opts.truncateSingleLine=true] — whether single-line text should be truncated to fit maxWidth.
      */
-      setText({ text, x, y, dot = 4, gap = HUD_TEXT_ESTIMATE_GAP_PX, color, maxWidth = null, colorRanges = null, truncateSingleLine = true, outlineWidth = 0, outlineColor = 0x000000, outlineOpacity = 0, fontWeight = null }) {
+      _applyInkCenter(invalidate = false) {
+        if (!this._inkCenter) return;
+        const info = this._textMesh.textRenderInfo;
+        if (!info || (info.parameters?.text != null && info.parameters.text !== this._inkCenter.text)) return;
+        const [left, bottom, right, top] = info.visibleBounds ?? [];
+        const { x, y, width } = this._inkCenter;
+        if (Number.isFinite(x) && Number.isFinite(left) && Number.isFinite(right)) {
+          const inkWidth = right - left;
+          const scaleX = Number.isFinite(width) && inkWidth > width ? width / inkWidth : 1;
+          this._textMesh.scale.x = scaleX;
+          this._textMesh.position.x = x - (left + right) * scaleX / 2;
+        }
+        if (Number.isFinite(y) && Number.isFinite(bottom) && Number.isFinite(top)) {
+          this._textMesh.position.y = y - (bottom + top) / 2;
+        }
+        // Layout may otherwise be idle when the asynchronous font metrics land.
+        if (invalidate) hud._dirty = true;
+      }
+
+      setText({ text, x, y, dot = 4, gap = HUD_TEXT_ESTIMATE_GAP_PX, color, maxWidth = null, colorRanges = null, truncateSingleLine = true, outlineWidth = 0, outlineColor = 0x000000, outlineOpacity = 0, fontWeight = null, inkCenterX = null, inkCenterY = null, inkFitWidth = null, ellipsis = false }) {
       if (typeof color === "number") this.setColor(color);
       try {
         const ow = Number(outlineWidth);
@@ -1091,8 +1156,20 @@ export function createHudTroikaTextRuntime({
       if (truncateSingleLine && !isMultiline && mw != null && Number.isFinite(mw)) {
         const perChar = estimateHudGlyphAdvancePx(dot, gap);
         const maxChars = Math.max(0, Math.floor((mw + gap) / Math.max(1, perChar)));
-        if (finalText.length > maxChars) finalText = finalText.slice(0, maxChars);
+        if (finalText.length > maxChars) finalText = ellipsis && maxChars > 1
+          ? finalText.slice(0, maxChars - 1).trimEnd() + "…"
+          : finalText.slice(0, maxChars);
       }
+      if (this._inkCenter && Number.isFinite(this._inkCenter.x)) this._textMesh.scale.x = 1;
+      this._inkCenter = finalText && (Number.isFinite(inkCenterX) || Number.isFinite(inkCenterY))
+        ? {
+          x: Number.isFinite(inkCenterX) ? this._textMesh.position.x - x + inkCenterX : null,
+          y: Number.isFinite(inkCenterY) ? this._textMesh.position.y + y - inkCenterY - topNudge : null,
+          width: inkFitWidth,
+          text: finalText,
+        }
+        : null;
+      this._applyInkCenter();
 
       // Use Troika layout for multiline text so width is respected regardless
       // of font metrics (prevents mission/list lines from overflowing panels).
@@ -1150,8 +1227,15 @@ export function createHudTroikaTextRuntime({
         this._textMesh.sdfGlyphSize = HUD_TEXT_SDF_GLYPH_SIZE;
         this._textMesh.color = this._color;
         try {
-          this._textMesh.colorRanges =
-            Array.isArray(colorRanges) && colorRanges.length ? colorRanges : null;
+          const palette = toTroikaColorRanges(colorRanges, finalText.length, this._color);
+          // Troika's per-glyph bytes enter the shader in linear space, unlike
+          // the sRGB CSS-style hex values accepted by a Three.js material.
+          const ink = palette && new THREE.Color();
+          this._textMesh.colorRanges = palette && Object.fromEntries(
+            Object.entries(palette).map(([start, color]) => [
+              start, ink.setHex(color).getHex(THREE.LinearSRGBColorSpace),
+            ])
+          );
         } catch {
           // no-op
         }

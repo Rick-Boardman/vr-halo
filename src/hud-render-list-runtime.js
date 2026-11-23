@@ -9,6 +9,7 @@
  * @module hud-render-list-runtime
  */
 
+import { styleHudListEntry } from "./hud-appearance-tokens.js";
 import { HUD_TEXT_DEFAULT_COLOR } from "./hud-text-style.js";
 import { HUD_SURFACE_ACCENT_COLOR } from "./hud-surface-style.js";
 import { estimateTextWidthPx } from "./text-measurement.js";
@@ -43,7 +44,36 @@ export function createHudRenderListRuntime({
   positionRect,
   getSelectionRects,
   makeRect,
+  THREE,
 }) {
+  const controlTextures = new Map();
+  const css = color => `#${color.toString(16).padStart(6, "0")}`;
+  function applyControlSurface(mesh, appearance, fill, w, h, focused) {
+    const mat = mesh?.material;
+    if (!mat) return;
+    let texture = null;
+    const border = focused ? appearance?.focus : appearance?.fieldBorder;
+    if (THREE?.CanvasTexture && typeof document !== "undefined" && Number.isFinite(border) && Number.isFinite(fill)) {
+      const height = 28, width = Math.max(32, Math.min(384, Math.round(w / h * height / 8) * 8));
+      const key = [fill, border, width, !!focused].join(":");
+      texture = controlTextures.get(key);
+      if (!texture) {
+        const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const line = focused ? 3 : 2;
+          ctx.fillStyle = css(border); ctx.fillRect(0, 0, width, height);
+          ctx.fillStyle = css(fill); ctx.fillRect(line, line, width - line * 2, height - line * 2);
+          texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+          texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
+          if (controlTextures.size < 192) controlTextures.set(key, texture);
+          else { texture.dispose(); texture = null; }
+        }
+      }
+    }
+    if (mat.map !== texture) { mat.map = texture; mat.needsUpdate = true; }
+    if (texture) mat.color?.setHex(0xffffff);
+  }
 
   /**
    * Render a scrollable list of text entries into a HUD window.
@@ -79,13 +109,15 @@ export function createHudRenderListRuntime({
 
     const noWrap = !!win.noWrap;
     const buildWrappedLines = (maxWidth) => noWrap
-      ? (entries ?? []).map((e) => ({
+      ? (entries ?? []).map((e, index) => ({
           text: typeof e === "string" ? e : String(e?.text ?? ""),
           color: typeof e === "object" && e && e.color != null ? e.color : null,
           sourceText:
             typeof e === "object" && e && e.sourceText != null
               ? String(e.sourceText)
               : null,
+          sourceRow: typeof e === "object" && e?.sourceText != null ? index : undefined,
+          sourceStartCol: 0,
           displayPrefixLength:
             typeof e === "object" && e && Number.isFinite(e.displayPrefixLength)
               ? Math.max(0, Math.floor(Number(e.displayPrefixLength)))
@@ -142,6 +174,8 @@ export function createHudRenderListRuntime({
               : null,
           actionButtonForceVisible:
             typeof e === "object" && e && e.actionButtonForceVisible === true,
+          accordionRole: e?.accordionRole,
+          accordionSelected: e?.accordionSelected === true,
           rowBgColor:
             typeof e === "object" && e && typeof e.rowBgColor === "number"
               ? e.rowBgColor
@@ -159,13 +193,13 @@ export function createHudRenderListRuntime({
           entries,
           dot: labelDot,
           maxWidth,
-          defaultColor: HUD_TEXT_DEFAULT_COLOR,
+          defaultColor: win.appearanceTokens?.text ?? HUD_TEXT_DEFAULT_COLOR,
         });
 
     const effectiveCw = Math.max(0, Number(cw) || 0);
     const effectiveCh = Math.max(0, Number(ch) || 0);
     const lineH = 12 * labelDot;
-    const footerActions = normalizeFooterActions(win?._footerEntries);
+    const footerActions = normalizeFooterActions(win?._footerEntries, win.appearanceTokens);
     let requestedFooterH = 0;
     for (const button of footerActions) {
       if (Number.isFinite(button.heightPx)) {
@@ -232,10 +266,13 @@ export function createHudRenderListRuntime({
       win._scrollVisibleLines = visibleLines;
     }
 
-    const slice = wrappedAll.slice(
+    const appearance = win.appearanceTokens;
+    const accordionInk = resolveHudAccordionInk(appearance);
+    const visible = wrappedAll.slice(
       win.scrollTop,
       win.scrollTop + visibleLines
     );
+    const slice = appearance ? visible.map((entry) => styleHudListEntry(entry, appearance)) : visible;
     const displayTexts = slice.map((entry) => (typeof entry === "string" ? entry : String(entry?.text ?? "")));
     const sourceTexts = slice.map((entry, index) => {
       if (entry && typeof entry === "object" && entry.sourceText != null) {
@@ -307,6 +344,8 @@ export function createHudRenderListRuntime({
       const meta = objs._visibleLineMeta[index];
       if (!meta) continue;
       meta.sourceText = sourceTexts[index] ?? meta.text;
+      meta.sourceRow = slice[index]?.sourceRow;
+      meta.sourceStartCol = slice[index]?.sourceStartCol ?? 0;
       meta.displayPrefixLength = displayPrefixLengths[index] ?? 0;
       meta.rowTopPx = rowTops[index] ?? index * lineH;
       meta.rowHeightPx = rowHeights[index] ?? lineH;
@@ -599,49 +638,37 @@ export function createHudRenderListRuntime({
     }
 
     try {
-      const rowInsetX = 2;
-      const rowInsetY = 1;
-      const rows = slice
-        .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) => typeof entry?.rowBgColor === "number");
-
-      if (!rows.length || effectiveCw <= rowInsetX * 2) {
-        hideRowBackgrounds();
-      } else {
-        ensureRowBackgroundCount(rows.length);
-        const roBase = Number.isFinite(objs?._renderOrderBase)
-          ? Math.floor(objs._renderOrderBase)
-          : 0;
-        for (let rowIndex = 0; rowIndex < objs.rowBackgroundRects.length; rowIndex += 1) {
-          const mesh = objs.rowBackgroundRects[rowIndex];
-          const row = rows[rowIndex];
-          if (!mesh || !row) {
-            if (mesh) mesh.visible = false;
-            continue;
-          }
-
-          const bgColor = Number(row.entry.rowBgColor) >>> 0;
-          const bgOpacity = Number.isFinite(row.entry.rowBgOpacity)
-            ? Number(row.entry.rowBgOpacity)
-            : 0.82;
-          try {
-            if (mesh.material?.color) mesh.material.color.setHex(bgColor);
-            if (mesh.material) mesh.material.opacity = bgOpacity;
-            mesh.renderOrder = roBase + 18;
-          } catch {
-            // no-op
-          }
-
-          positionRect(
-            mesh,
-            cx + rowInsetX,
-            cy + (rowTops[row.index] ?? row.index * lineH) + rowInsetY,
-            Math.max(0, effectiveCw - rowInsetX * 2),
-            Math.max(6, (rowHeights[row.index] ?? lineH) - rowInsetY * 2),
-            0.0033 + lift
-          );
-          mesh.visible = true;
+      const rowInsetX = appearance ? 5 : 2;
+      const rowInsetY = appearance ? 2 : 1;
+      const layers = [];
+      slice.forEach((entry, index) => {
+        const top = rowTops[index] ?? index * lineH;
+        const height = rowHeights[index] ?? lineH;
+        if (entry.accordionRole) {
+          layers.push(...layoutHudAccordionRow(entry.accordionRole, effectiveCw, top, height,
+            availableContentHeight, accordionInk, entry.accordionSelected));
+        } else if (typeof entry.rowBgColor === "number" && effectiveCw > rowInsetX * 2) {
+          layers.push({ x: rowInsetX, y: top + rowInsetY, w: effectiveCw - rowInsetX * 2,
+            h: Math.max(6, height - rowInsetY * 2), color: entry.rowBgColor,
+            opacity: Number.isFinite(entry.rowBgOpacity) ? entry.rowBgOpacity : 0.82, order: 18 });
         }
+      });
+      if (!layers.length) hideRowBackgrounds();
+      else {
+        ensureRowBackgroundCount(layers.length);
+        const roBase = Number.isFinite(objs?._renderOrderBase) ? Math.floor(objs._renderOrderBase) : 0;
+        objs.rowBackgroundRects.forEach((mesh, index) => {
+          const layer = layers[index];
+          if (!mesh || !layer) {
+            if (mesh) mesh.visible = false;
+            return;
+          }
+          mesh.material?.color?.setHex(layer.color);
+          if (mesh.material) mesh.material.opacity = layer.opacity;
+          mesh.renderOrder = roBase + layer.order;
+          positionRect(mesh, cx + layer.x, cy + layer.y, layer.w, layer.h, 0.0033 + lift);
+          mesh.visible = true;
+        });
       }
     } catch {
       hideRowBackgrounds();
@@ -659,7 +686,7 @@ export function createHudRenderListRuntime({
         const roBase = Number.isFinite(objs?._renderOrderBase)
           ? Math.floor(objs._renderOrderBase)
           : 0;
-        const buttonDot = Math.max(1, labelDot * 0.85);
+        const buttonDot = Math.max(1, labelDot * (appearance ? 1.03 : 0.85));
         for (let rowIndex = 0; rowIndex < objs.actionButtonRects.length; rowIndex += 1) {
           const mesh = objs.actionButtonRects[rowIndex];
           const icon = objs.actionButtonIcons?.[rowIndex] ?? null;
@@ -676,10 +703,13 @@ export function createHudRenderListRuntime({
           const rowHeight = rowHeights[row.index] ?? lineH;
           const rowTop = rowTops[row.index] ?? row.index * lineH;
           const hasButtonText = typeof button.text === "string" && button.text.length > 0;
-          const buttonW = Math.max(18, Math.min(effectiveCw - 2, Number.isFinite(button.widthPx) ? Number(button.widthPx) : 24));
-          const buttonH = Math.max(8, rowHeight - 4);
-          const buttonX = cx + Math.max(0, effectiveCw - buttonW - 2);
-          const buttonY = cy + rowTop + Math.max(1, Math.floor((rowHeight - buttonH) / 2));
+          const accordionRole = slice[row.index]?.accordionRole;
+          const accordion = !!accordionRole && effectiveCw > 28;
+          const heading = accordionRole === "header" || accordionRole === "single";
+          const buttonW = accordion ? effectiveCw - 2 * ACCORDION_SIDE : Math.max(18, Math.min(effectiveCw - 2, Number.isFinite(button.widthPx) ? Number(button.widthPx) : 24));
+          const buttonH = accordion ? rowHeight : Math.max(8, rowHeight - 4);
+          const buttonX = cx + (accordion ? ACCORDION_SIDE : Math.max(0, effectiveCw - buttonW - 2));
+          const buttonY = cy + rowTop + (accordion ? 0 : Math.max(1, Math.floor((rowHeight - buttonH) / 2)));
 
           try {
             if (mesh.material?.color) mesh.material.color.setHex(
@@ -693,8 +723,13 @@ export function createHudRenderListRuntime({
             // no-op
           }
 
+          const focused = win._textCaret?.target === "actionButton" && win._textCaret?.row === row.index + win.scrollTop && win._textCaret.visible ||
+            win._textSelection?.target === "actionButton" && win._textSelection?.startRow === row.index + win.scrollTop && win._textSelection.visible;
+          if (!accordion) applyControlSurface(mesh, appearance, button.bgColor, buttonW, buttonH, focused);
           positionRect(mesh, buttonX, buttonY, buttonW, buttonH, 0.00345 + lift);
-          mesh.visible = true;
+          // The group layers supply the surface; never draw a second boxed field above it.
+          mesh.visible = !accordion;
+          if (accordion) button.textColor = heading ? accordionInk.headingText : accordionInk.text;
 
           if (button.iconTexture) {
             syncButtonIconMesh(icon, button.iconTexture, roBase + 20);
@@ -716,7 +751,7 @@ export function createHudRenderListRuntime({
             ? clamp(Number(button.textInsetPx), 4, Math.max(4, buttonW - 4))
             : null;
           const textX = buttonX + (textInsetPx != null ? textInsetPx : Math.max(4, Math.floor(buttonW * 0.28)));
-          const textY = buttonY + 1;
+          const textY = buttonY + (accordion ? Math.max(1, Math.floor((buttonH - lineH) / 2)) : 1);
           button.textX = textX;
           button.textY = textY;
           button.dot = buttonDot;
@@ -726,12 +761,12 @@ export function createHudRenderListRuntime({
               const textMaxWidth = textInsetPx != null
                 ? Math.max(6, buttonW - textInsetPx - 4 - Math.max(0, Number(button._trailingIconReservedWidth) || 0))
                 : Math.max(6, buttonW - 8 - Math.max(0, Number(button._trailingIconReservedWidth) || 0));
-              label.setRenderOrder(roBase + 20);
+              label.setRenderOrder(roBase + (appearance ? 24 : 20));
               label.setText({
                 text: String(button.text ?? ""),
                 x: textX,
                 y: textY,
-                dot: buttonDot,
+                dot: accordion && heading ? buttonDot * 1.1 : buttonDot,
                 color: typeof button.textColor === "number" ? Number(button.textColor) >>> 0 : 0xffffff,
                 maxWidth: textMaxWidth,
                 truncateSingleLine: true,
@@ -819,6 +854,7 @@ export function createHudRenderListRuntime({
             // no-op
           }
 
+          applyControlSurface(mesh, appearance, button.bgColor, buttonW, footerButtonH, false);
           positionRect(mesh, nextX, buttonY, buttonW, footerButtonH, 0.00345 + lift);
           mesh.visible = true;
 
@@ -886,49 +922,37 @@ export function createHudRenderListRuntime({
       hideFooterActionButtons();
     }
 
-    // Selection colorRanges for Troika base layer.
-    // Must be applied during the main draw; otherwise the next frame's draw
-    // overwrites colorRanges and selection appears to flicker.
-    let selectionColorRanges = null;
-    try {
-      const sel = win._textSelection;
-      if (sel && sel.visible && sel.target !== "actionButton" && sel.target !== "footer" && Array.isArray(slice)) {
-        const starts = new Array(displayTexts.length);
-        let acc = 0;
-        for (let i = 0; i < displayTexts.length; i++) {
-          starts[i] = acc;
-          acc += displayTexts[i].length;
-          if (i < displayTexts.length - 1) acc += 1; // newline
-        }
-        const totalTextLen = acc;
-
-        const rowToLocalIndex = (row, col) => {
-          const r = Math.floor(Number(row));
-          const c = Math.floor(Number(col));
-          if (!Number.isFinite(r)) return 0;
-          const localRow = r - win.scrollTop;
-          if (localRow < 0) return 0;
-          if (localRow >= displayTexts.length) return totalTextLen;
-          const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
-          const prefix = displayPrefixLengths[localRow] ?? 0;
-          const cc = clamp(Number.isFinite(c) ? c : 0, 0, line.length);
-          return (starts[localRow] ?? 0) + prefix + cc;
-        };
-
-        const startI = rowToLocalIndex(sel.startRow, sel.startCol);
-        const endI = rowToLocalIndex(sel.endRow, sel.endCol);
-        const a = clamp(startI, 0, totalTextLen);
-        const b = clamp(endI, 0, totalTextLen);
-        const lo = Math.min(a, b);
-        const hi = Math.max(a, b);
-        if (hi > lo) {
-          const tc = parseHexColor(sel.textColor, 0xffffff);
-          selectionColorRanges = [{ start: lo, end: hi, color: tc }];
-        }
-      }
-    } catch {
-      selectionColorRanges = null;
+    // The editor stores logical source rows, while this window paints wrapped rows.
+    // Work out both the foreground and the highlight geometry from the same spans.
+    const starts = [];
+    let textOffset = 0;
+    for (const line of displayTexts) {
+      starts.push(textOffset);
+      textOffset += line.length + 1;
     }
+    const selection = win._textSelection;
+    const selectedRows = [];
+    if (selection?.visible && selection.target !== "actionButton" && selection.target !== "footer") {
+      const { startRow, startCol, endRow, endCol } = selection;
+      const forward = startRow < endRow || (startRow === endRow && startCol <= endCol);
+      const [sr, sc, er, ec] = forward
+        ? [startRow, startCol, endRow, endCol]
+        : [endRow, endCol, startRow, startCol];
+      for (let i = 0; i < displayTexts.length; i += 1) {
+        const sourceRow = slice[i]?.sourceRow ?? (win.scrollTop + i);
+        if (sourceRow < sr || sourceRow > er) continue;
+        const sourceOffset = slice[i]?.sourceStartCol ?? 0;
+        const sourceLength = sourceTexts[i].length;
+        const prefix = displayPrefixLengths[i];
+        const lo = prefix + (sourceRow === sr ? clamp(sc - sourceOffset, 0, sourceLength) : 0);
+        const hi = prefix + (sourceRow === er ? clamp(ec - sourceOffset, 0, sourceLength) : sourceLength);
+        if (hi > lo) selectedRows.push({ i, lo, hi });
+      }
+    }
+    const selectedInk = appearance?.selectionText ?? parseHexColor(selection?.textColor, 0xffffff);
+    const selectionColorRanges = selectedRows.map(({ i, lo, hi }) => ({
+      start: starts[i] + lo, end: starts[i] + hi, color: selectedInk,
+    }));
 
     setColoredMultilineText({
       objs,
@@ -940,8 +964,9 @@ export function createHudRenderListRuntime({
       // Troika draw unconstrained so the scrollbar gutter does not steal a
       // second column of width from the rendered text.
       maxWidth: null,
-      defaultColor: HUD_TEXT_DEFAULT_COLOR,
+      defaultColor: appearance?.text ?? HUD_TEXT_DEFAULT_COLOR,
       colorRanges: selectionColorRanges,
+      forceSharedLayout: slice.some((entry) => Number.isFinite(entry?.sourceRow)),
     });
 
     // Selection highlight (editor windows only).
@@ -1039,15 +1064,15 @@ export function createHudRenderListRuntime({
             const want = Array.isArray(rects) && rects.length ? rects.length : Array.isArray(fallback) ? fallback.length : 0;
             ensureCount(want);
 
-            const col = parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
-            const op = sel.opacity != null ? Number(sel.opacity) : 0.8;
+            const col = appearance?.selection ?? parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
+            const op = appearance?.selectionOpacity ?? (sel.opacity != null ? Number(sel.opacity) : 0.8);
 
             for (let i = 0; i < objs.selectionRects.length; i++) {
               const mesh = objs.selectionRects[i];
               if (!mesh) continue;
               try {
                 const roBase = Number(objs?._renderOrderBase);
-                if (Number.isFinite(roBase)) mesh.renderOrder = roBase + 29;
+                if (Number.isFinite(roBase)) mesh.renderOrder = roBase + (appearance ? 22 : 29);
               } catch {
                 // no-op
               }
@@ -1100,102 +1125,32 @@ export function createHudRenderListRuntime({
           }
         }
       } else {
-        const starts = new Array(displayTexts.length);
-        let acc = 0;
-        for (let i = 0; i < displayTexts.length; i++) {
-          starts[i] = acc;
-          acc += displayTexts[i].length;
-          if (i < displayTexts.length - 1) acc += 1; // newline
-        }
-        const totalTextLen = acc;
-
-        const rowToLocalIndex = (row, col) => {
-          const r = Math.floor(Number(row));
-          const c = Math.floor(Number(col));
-          if (!Number.isFinite(r)) return 0;
-          const localRow = r - win.scrollTop;
-          if (localRow < 0) {
-            // Clamp above visible to start.
-            return 0;
-          }
-          if (localRow >= displayTexts.length) {
-            // Clamp below visible to end.
-            return totalTextLen;
-          }
-          const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
-          const cc = clamp(Number.isFinite(c) ? c : 0, 0, line.length);
-          return (starts[localRow] ?? 0) + cc;
-        };
-
-        const startI = rowToLocalIndex(sel.startRow, sel.startCol);
-        const endI = rowToLocalIndex(sel.endRow, sel.endCol);
-        const a = clamp(startI, 0, totalTextLen);
-        const b = clamp(endI, 0, totalTextLen);
-        const lo = Math.min(a, b);
-        const hi = Math.max(a, b);
-        if (hi <= lo) {
+        if (!selectedRows.length) {
           hideAll();
         } else {
           let rects = null;
           try {
-            if (tri && tri.caretPositions) rects = getSelectionRects(tri, lo, hi) ?? [];
+            if (tri?.caretPositions && tri.parameters?.text === displayTexts.join("\n")) {
+              rects = selectedRows.flatMap(({ i, lo, hi }) =>
+                getSelectionRects(tri, starts[i] + lo, starts[i] + hi) ?? []);
+            }
           } catch {
             rects = null;
           }
-
-          // Fallback when Troika layout info isn't ready (e.g. during async sync).
-          // This uses fixed metrics so selection stays visible rather than flashing.
-          let fallback = null;
-          if (!Array.isArray(rects) || rects.length === 0) {
-            try {
-              const isBefore = (r1, c1, r2, c2) => {
-                const rr1 = Math.floor(Number(r1));
-                const cc1 = Math.floor(Number(c1));
-                const rr2 = Math.floor(Number(r2));
-                const cc2 = Math.floor(Number(c2));
-                if (rr1 < rr2) return true;
-                if (rr1 > rr2) return false;
-                return cc1 <= cc2;
-              };
-
-              const sr = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.startRow : sel.endRow;
-              const sc = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.startCol : sel.endCol;
-              const er = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.endRow : sel.startRow;
-              const ec = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.endCol : sel.startCol;
-
-              const charW = 6 * labelDot;
-              const lineH = 12 * labelDot;
-              const topNudge = (7 * labelDot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
-
-              const vStart = win.scrollTop;
-              const vEnd = win.scrollTop + (displayTexts.length - 1);
-              const r0 = clamp(Math.floor(Number(sr)), vStart, vEnd);
-              const r1 = clamp(Math.floor(Number(er)), vStart, vEnd);
-
-              fallback = [];
-              for (let row = r0; row <= r1; row++) {
-                const localRow = row - win.scrollTop;
-                const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
-                const prefix = displayPrefixLengths[localRow] ?? 0;
-                const c0 = row === Math.floor(Number(sr)) ? Math.floor(Number(sc)) : 0;
-                const c1 = row === Math.floor(Number(er)) ? Math.floor(Number(ec)) : line.length;
-                const col0 = clamp(c0, 0, line.length);
-                const col1 = clamp(c1, 0, line.length);
-                const leftPx = cx + (prefix + Math.min(col0, col1)) * charW;
-                const wPx = Math.max(1, Math.abs(col1 - col0) * charW);
-                const yPx = cy + localRow * lineH - topNudge;
-                fallback.push({ x: leftPx, y: yPx, w: wPx, h: lineH });
-              }
-            } catch {
-              fallback = null;
-            }
-          }
+          const topNudge = (7 * labelDot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
+          const fallback = rects?.length ? null : selectedRows.map(({ i, lo, hi }) => ({
+            x: cx + estimateTextWidthPx(displayTexts[i].slice(0, lo), labelDot),
+            y: cy + rowTops[i] - topNudge,
+            w: Math.max(1, estimateTextWidthPx(displayTexts[i].slice(0, hi), labelDot)
+              - estimateTextWidthPx(displayTexts[i].slice(0, lo), labelDot)),
+            h: rowHeights[i],
+          }));
 
           const want = Array.isArray(rects) && rects.length ? rects.length : Array.isArray(fallback) ? fallback.length : 0;
           ensureCount(want);
 
-          const col = parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
-          const op = sel.opacity != null ? Number(sel.opacity) : 0.8;
+          const col = appearance?.selection ?? parseHexColor(sel.color, HUD_SURFACE_ACCENT_COLOR);
+          const op = appearance?.selectionOpacity ?? (sel.opacity != null ? Number(sel.opacity) : 0.8);
 
           for (let i = 0; i < objs.selectionRects.length; i++) {
             const mesh = objs.selectionRects[i];
@@ -1306,8 +1261,8 @@ export function createHudRenderListRuntime({
                 h0 = Math.max(1, top - bottom);
               }
             }
-            if (objs.caret.material?.color && caret.color != null) {
-              objs.caret.material.color.setHex(Number(caret.color) >>> 0);
+            if (objs.caret.material?.color && (appearance?.caret != null || caret.color != null)) {
+              objs.caret.material.color.setHex(appearance?.caret ?? (Number(caret.color) >>> 0));
             }
             positionRect(objs.caret, x0, y0, cwPx, h0, 0.00415 + lift);
             objs.caret.visible = true;
@@ -1393,8 +1348,8 @@ export function createHudRenderListRuntime({
               }
             }
 
-            if (objs.caret.material?.color && caret.color != null) {
-              objs.caret.material.color.setHex(Number(caret.color) >>> 0);
+            if (objs.caret.material?.color && (appearance?.caret != null || caret.color != null)) {
+              objs.caret.material.color.setHex(appearance?.caret ?? (Number(caret.color) >>> 0));
             }
             positionRect(objs.caret, x0, y0, cwPx, h0, 0.00415 + lift);
             objs.caret.visible = true;
@@ -1410,22 +1365,21 @@ export function createHudRenderListRuntime({
           return;
         }
 
-        const inRange = Number.isFinite(row) && row >= win.scrollTop && row < win.scrollTop + visibleLines;
-        if (!inRange) {
+        const matches = [];
+        for (let i = 0; i < displayTexts.length; i += 1) {
+          const sourceRow = slice[i]?.sourceRow ?? (win.scrollTop + i);
+          if (sourceRow !== row) continue;
+          const firstCol = slice[i]?.sourceStartCol ?? 0;
+          if (firstCol <= col) matches.push(i);
+        }
+        const localRow = matches.at(-1);
+        if (localRow == null) {
           objs.caret.visible = false;
         } else {
-          const localRow = row - win.scrollTop;
-          const starts = new Array(displayTexts.length);
-          let acc = 0;
-          for (let i = 0; i < displayTexts.length; i++) {
-            starts[i] = acc;
-            acc += displayTexts[i].length;
-            if (i < displayTexts.length - 1) acc += 1;
-          }
-          const totalTextLen = acc;
-          const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
           const prefix = displayPrefixLengths[localRow] ?? 0;
-          const cc = clamp(Number.isFinite(col) ? col : 0, 0, line.length);
+          const line = sourceTexts[localRow] ?? "";
+          const sourceOffset = slice[localRow]?.sourceStartCol ?? 0;
+          const cc = clamp(col - sourceOffset, 0, line.length);
           const charIndex = (starts[localRow] ?? 0) + prefix + cc;
           const lineStartIndex = starts[localRow] ?? 0;
           const lineDisplayText = displayTexts[localRow] ?? "";
@@ -1455,7 +1409,7 @@ export function createHudRenderListRuntime({
           const syncedMetricOnCurrentRow = syncedMetricIndex >= lineStartIndex && syncedMetricIndex <= lineEndIndex;
 
           let x0 = cx + estimateTextWidthPx(lineDisplayText.slice(0, charDisplayCol), labelDot);
-          let y0 = cy + localRow * (12 * labelDot);
+          let y0 = cy + rowTops[localRow];
           let h0 = 12 * labelDot;
 
           const topNudge = (7 * labelDot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
@@ -1489,8 +1443,8 @@ export function createHudRenderListRuntime({
             }
           }
 
-          if (objs.caret.material?.color && caret.color != null) {
-            objs.caret.material.color.setHex(Number(caret.color) >>> 0);
+          if (objs.caret.material?.color && (appearance?.caret != null || caret.color != null)) {
+            objs.caret.material.color.setHex(appearance?.caret ?? (Number(caret.color) >>> 0));
           }
           positionRect(objs.caret, x0, y0, cwPx, h0, 0.00415 + lift);
           objs.caret.visible = true;
@@ -1515,13 +1469,47 @@ export function createHudRenderListRuntime({
     }
   }
 
-  return { renderList };
+  return { renderList, dispose: () => { for (const texture of controlTextures.values()) texture.dispose(); controlTextures.clear(); } };
 }
 
-function normalizeFooterActions(entries) {
+const ACCORDION_SIDE = 7;
+
+// Colors follow the active HUD theme, with a native dark fallback for custom/legacy skins.
+function resolveHudAccordionInk(theme) {
+  const dark = !theme || (theme.surface ?? 0x182536) < 0x808080;
+  return dark
+    ? { body: 0x223449, heading: 0x314a65, rail: 0x81a6cb, border: 0x6e8ba8,
+        headingText: 0xf2f6fb, text: 0xe1ebf6, selected: theme?.selectedRow ?? 0x35577d }
+    : { body: 0xedf3f9, heading: 0xdce8f5, rail: 0x597da2, border: 0x7893ae,
+        headingText: 0x162f4a, text: 0x243d56, selected: theme?.selectedRow ?? 0xd3e5f7 };
+}
+
+// The caller provides full-list edge roles before slicing. Never draw a false
+// top/bottom border when scrolling through a section or clipping its last row.
+export function layoutHudAccordionRow(role, width, top, height, viewportHeight, ink, selected = false) {
+  const first = role === "header" || role === "single";
+  const last = role === "last" || role === "single";
+  if ((!first && !last && role !== "item") || width <= 28 || height <= 0) return [];
+  const x = ACCORDION_SIDE, w = width - x * 2;
+  const rects = [];
+  const draw = (x, y, w, h, color, order) => {
+    const start = Math.max(0, y), end = Math.min(viewportHeight, y + h);
+    if (end > start && w > 0) rects.push({ x, y:start, w, h:end-start, color, order, opacity:1 });
+  };
+  draw(x, top, w, height, first ? ink.heading : ink.body, 17);
+  draw(x, top, 3, height, ink.rail, 18);
+  draw(x + w - 1, top, 1, height, ink.border, 18);
+  if (first) draw(x + 3, top, w - 4, 1, ink.border, 18);
+  if (first || last) draw(x + 3, top + height - 1, w - 4, 1, ink.border, 18);
+  if (!first && selected) draw(x + 10, top + 2, w - 16, height - 4, ink.selected, 18);
+  return rects;
+}
+
+function normalizeFooterActions(entries, appearance) {
   if (!Array.isArray(entries)) return [];
   return entries
-    .map((entry) => {
+    .map((raw) => {
+      const entry = styleHudListEntry(raw, appearance);
       if (!entry || typeof entry !== "object") return null;
       if (typeof entry.actionButtonOnClick !== "function") return null;
       const text = typeof entry.actionButtonText === "string" ? entry.actionButtonText.trim() : "";
