@@ -51,6 +51,41 @@ import {
   HUD_Z_WINDOW_BG,
 } from "./hud-layout-policy.js";
 
+/** Convert Halo's half-open spans to Troika's persistent start-index palette. Later spans win. */
+export function toTroikaColorRanges(ranges, textLength, baseColor) {
+  if (!Array.isArray(ranges) || !ranges.length || !textLength) return null;
+  const limit = (value) => Math.max(0, Math.min(textLength, Math.floor(Number(value) || 0)));
+  const events = new Map();
+  const add = (key, change) => {
+    if (!events.has(key)) events.set(key, []);
+    events.get(key).push(change);
+  };
+  ranges.forEach((range, index) => {
+    const start = limit(range.start);
+    const end = limit(range.end);
+    if (start >= end) return;
+    add(start, [index, Number(range.color ?? baseColor) >>> 0]);
+    add(end, [index, null]);
+  });
+  if (!events.size) return null;
+  if (!events.has(0)) events.set(0, []);
+  const result = {};
+  const active = new Map();
+  let previous;
+  for (const position of [...events.keys()].sort((a, b) => a - b)) {
+    for (const [index, color] of events.get(position)) {
+      if (color == null) active.delete(index);
+      else active.set(index, color);
+    }
+    if (position === textLength) break;
+    const last = [...active.keys()].reduce((max, index) => Math.max(max, index), -1);
+    const color = active.get(last) ?? baseColor;
+    if (color !== previous) result[position] = color;
+    previous = color;
+  }
+  return result;
+}
+
 export function createHudTroikaTextRuntime({
   THREE,
   hud,
@@ -394,6 +429,7 @@ export function createHudTroikaTextRuntime({
     maxWidth,
     defaultColor = HUD_TEXT_DEFAULT_COLOR,
     colorRanges = null,
+    forceSharedLayout = false,
   }) {
     const zLift = objs && Number.isFinite(objs._zLift) ? Number(objs._zLift) : 0;
     const roTextBase =
@@ -417,7 +453,7 @@ export function createHudTroikaTextRuntime({
       return lineColor !== resolvedDefaultColor;
     });
 
-    if (hasPerLineColors && !hasInlineColorRanges && !hasInheritedColorRanges) {
+    if (hasPerLineColors && !hasInlineColorRanges && !hasInheritedColorRanges && !forceSharedLayout) {
       _ensureTroikaThreeTextLoading();
       hideColorLayers(objs);
       hideLegacyColoredTextMeshes(objs);
@@ -1150,8 +1186,15 @@ export function createHudTroikaTextRuntime({
         this._textMesh.sdfGlyphSize = HUD_TEXT_SDF_GLYPH_SIZE;
         this._textMesh.color = this._color;
         try {
-          this._textMesh.colorRanges =
-            Array.isArray(colorRanges) && colorRanges.length ? colorRanges : null;
+          const palette = toTroikaColorRanges(colorRanges, finalText.length, this._color);
+          // Troika's per-glyph bytes enter the shader in linear space, unlike
+          // the sRGB CSS-style hex values accepted by a Three.js material.
+          const ink = palette && new THREE.Color();
+          this._textMesh.colorRanges = palette && Object.fromEntries(
+            Object.entries(palette).map(([start, color]) => [
+              start, ink.setHex(color).getHex(THREE.LinearSRGBColorSpace),
+            ])
+          );
         } catch {
           // no-op
         }

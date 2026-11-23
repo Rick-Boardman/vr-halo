@@ -109,13 +109,15 @@ export function createHudRenderListRuntime({
 
     const noWrap = !!win.noWrap;
     const buildWrappedLines = (maxWidth) => noWrap
-      ? (entries ?? []).map((e) => ({
+      ? (entries ?? []).map((e, index) => ({
           text: typeof e === "string" ? e : String(e?.text ?? ""),
           color: typeof e === "object" && e && e.color != null ? e.color : null,
           sourceText:
             typeof e === "object" && e && e.sourceText != null
               ? String(e.sourceText)
               : null,
+          sourceRow: typeof e === "object" && e?.sourceText != null ? index : undefined,
+          sourceStartCol: 0,
           displayPrefixLength:
             typeof e === "object" && e && Number.isFinite(e.displayPrefixLength)
               ? Math.max(0, Math.floor(Number(e.displayPrefixLength)))
@@ -339,6 +341,8 @@ export function createHudRenderListRuntime({
       const meta = objs._visibleLineMeta[index];
       if (!meta) continue;
       meta.sourceText = sourceTexts[index] ?? meta.text;
+      meta.sourceRow = slice[index]?.sourceRow;
+      meta.sourceStartCol = slice[index]?.sourceStartCol ?? 0;
       meta.displayPrefixLength = displayPrefixLengths[index] ?? 0;
       meta.rowTopPx = rowTops[index] ?? index * lineH;
       meta.rowHeightPx = rowHeights[index] ?? lineH;
@@ -922,49 +926,37 @@ export function createHudRenderListRuntime({
       hideFooterActionButtons();
     }
 
-    // Selection colorRanges for Troika base layer.
-    // Must be applied during the main draw; otherwise the next frame's draw
-    // overwrites colorRanges and selection appears to flicker.
-    let selectionColorRanges = null;
-    try {
-      const sel = win._textSelection;
-      if (sel && sel.visible && sel.target !== "actionButton" && sel.target !== "footer" && Array.isArray(slice)) {
-        const starts = new Array(displayTexts.length);
-        let acc = 0;
-        for (let i = 0; i < displayTexts.length; i++) {
-          starts[i] = acc;
-          acc += displayTexts[i].length;
-          if (i < displayTexts.length - 1) acc += 1; // newline
-        }
-        const totalTextLen = acc;
-
-        const rowToLocalIndex = (row, col) => {
-          const r = Math.floor(Number(row));
-          const c = Math.floor(Number(col));
-          if (!Number.isFinite(r)) return 0;
-          const localRow = r - win.scrollTop;
-          if (localRow < 0) return 0;
-          if (localRow >= displayTexts.length) return totalTextLen;
-          const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
-          const prefix = displayPrefixLengths[localRow] ?? 0;
-          const cc = clamp(Number.isFinite(c) ? c : 0, 0, line.length);
-          return (starts[localRow] ?? 0) + prefix + cc;
-        };
-
-        const startI = rowToLocalIndex(sel.startRow, sel.startCol);
-        const endI = rowToLocalIndex(sel.endRow, sel.endCol);
-        const a = clamp(startI, 0, totalTextLen);
-        const b = clamp(endI, 0, totalTextLen);
-        const lo = Math.min(a, b);
-        const hi = Math.max(a, b);
-        if (hi > lo) {
-          const tc = appearance?.selectionText ?? parseHexColor(sel.textColor, 0xffffff);
-          selectionColorRanges = [{ start: lo, end: hi, color: tc }];
-        }
-      }
-    } catch {
-      selectionColorRanges = null;
+    // The editor stores logical source rows, while this window paints wrapped rows.
+    // Work out both the foreground and the highlight geometry from the same spans.
+    const starts = [];
+    let textOffset = 0;
+    for (const line of displayTexts) {
+      starts.push(textOffset);
+      textOffset += line.length + 1;
     }
+    const selection = win._textSelection;
+    const selectedRows = [];
+    if (selection?.visible && selection.target !== "actionButton" && selection.target !== "footer") {
+      const { startRow, startCol, endRow, endCol } = selection;
+      const forward = startRow < endRow || (startRow === endRow && startCol <= endCol);
+      const [sr, sc, er, ec] = forward
+        ? [startRow, startCol, endRow, endCol]
+        : [endRow, endCol, startRow, startCol];
+      for (let i = 0; i < displayTexts.length; i += 1) {
+        const sourceRow = slice[i]?.sourceRow ?? (win.scrollTop + i);
+        if (sourceRow < sr || sourceRow > er) continue;
+        const sourceOffset = slice[i]?.sourceStartCol ?? 0;
+        const sourceLength = sourceTexts[i].length;
+        const prefix = displayPrefixLengths[i];
+        const lo = prefix + (sourceRow === sr ? clamp(sc - sourceOffset, 0, sourceLength) : 0);
+        const hi = prefix + (sourceRow === er ? clamp(ec - sourceOffset, 0, sourceLength) : sourceLength);
+        if (hi > lo) selectedRows.push({ i, lo, hi });
+      }
+    }
+    const selectedInk = appearance?.selectionText ?? parseHexColor(selection?.textColor, 0xffffff);
+    const selectionColorRanges = selectedRows.map(({ i, lo, hi }) => ({
+      start: starts[i] + lo, end: starts[i] + hi, color: selectedInk,
+    }));
 
     setColoredMultilineText({
       objs,
@@ -976,8 +968,9 @@ export function createHudRenderListRuntime({
       // Troika draw unconstrained so the scrollbar gutter does not steal a
       // second column of width from the rendered text.
       maxWidth: null,
-      defaultColor: HUD_TEXT_DEFAULT_COLOR,
+      defaultColor: appearance?.text ?? HUD_TEXT_DEFAULT_COLOR,
       colorRanges: selectionColorRanges,
+      forceSharedLayout: slice.some((entry) => Number.isFinite(entry?.sourceRow)),
     });
 
     // Selection highlight (editor windows only).
@@ -1136,96 +1129,26 @@ export function createHudRenderListRuntime({
           }
         }
       } else {
-        const starts = new Array(displayTexts.length);
-        let acc = 0;
-        for (let i = 0; i < displayTexts.length; i++) {
-          starts[i] = acc;
-          acc += displayTexts[i].length;
-          if (i < displayTexts.length - 1) acc += 1; // newline
-        }
-        const totalTextLen = acc;
-
-        const rowToLocalIndex = (row, col) => {
-          const r = Math.floor(Number(row));
-          const c = Math.floor(Number(col));
-          if (!Number.isFinite(r)) return 0;
-          const localRow = r - win.scrollTop;
-          if (localRow < 0) {
-            // Clamp above visible to start.
-            return 0;
-          }
-          if (localRow >= displayTexts.length) {
-            // Clamp below visible to end.
-            return totalTextLen;
-          }
-          const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
-          const cc = clamp(Number.isFinite(c) ? c : 0, 0, line.length);
-          return (starts[localRow] ?? 0) + cc;
-        };
-
-        const startI = rowToLocalIndex(sel.startRow, sel.startCol);
-        const endI = rowToLocalIndex(sel.endRow, sel.endCol);
-        const a = clamp(startI, 0, totalTextLen);
-        const b = clamp(endI, 0, totalTextLen);
-        const lo = Math.min(a, b);
-        const hi = Math.max(a, b);
-        if (hi <= lo) {
+        if (!selectedRows.length) {
           hideAll();
         } else {
           let rects = null;
           try {
-            if (tri && tri.caretPositions) rects = getSelectionRects(tri, lo, hi) ?? [];
+            if (tri?.caretPositions && tri.parameters?.text === displayTexts.join("\n")) {
+              rects = selectedRows.flatMap(({ i, lo, hi }) =>
+                getSelectionRects(tri, starts[i] + lo, starts[i] + hi) ?? []);
+            }
           } catch {
             rects = null;
           }
-
-          // Fallback when Troika layout info isn't ready (e.g. during async sync).
-          // This uses fixed metrics so selection stays visible rather than flashing.
-          let fallback = null;
-          if (!Array.isArray(rects) || rects.length === 0) {
-            try {
-              const isBefore = (r1, c1, r2, c2) => {
-                const rr1 = Math.floor(Number(r1));
-                const cc1 = Math.floor(Number(c1));
-                const rr2 = Math.floor(Number(r2));
-                const cc2 = Math.floor(Number(c2));
-                if (rr1 < rr2) return true;
-                if (rr1 > rr2) return false;
-                return cc1 <= cc2;
-              };
-
-              const sr = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.startRow : sel.endRow;
-              const sc = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.startCol : sel.endCol;
-              const er = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.endRow : sel.startRow;
-              const ec = isBefore(sel.startRow, sel.startCol, sel.endRow, sel.endCol) ? sel.endCol : sel.startCol;
-
-              const charW = 6 * labelDot;
-              const lineH = 12 * labelDot;
-              const topNudge = (7 * labelDot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
-
-              const vStart = win.scrollTop;
-              const vEnd = win.scrollTop + (displayTexts.length - 1);
-              const r0 = clamp(Math.floor(Number(sr)), vStart, vEnd);
-              const r1 = clamp(Math.floor(Number(er)), vStart, vEnd);
-
-              fallback = [];
-              for (let row = r0; row <= r1; row++) {
-                const localRow = row - win.scrollTop;
-                const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
-                const prefix = displayPrefixLengths[localRow] ?? 0;
-                const c0 = row === Math.floor(Number(sr)) ? Math.floor(Number(sc)) : 0;
-                const c1 = row === Math.floor(Number(er)) ? Math.floor(Number(ec)) : line.length;
-                const col0 = clamp(c0, 0, line.length);
-                const col1 = clamp(c1, 0, line.length);
-                const leftPx = cx + (prefix + Math.min(col0, col1)) * charW;
-                const wPx = Math.max(1, Math.abs(col1 - col0) * charW);
-                const yPx = cy + localRow * lineH - topNudge;
-                fallback.push({ x: leftPx, y: yPx, w: wPx, h: lineH });
-              }
-            } catch {
-              fallback = null;
-            }
-          }
+          const topNudge = (7 * labelDot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
+          const fallback = rects?.length ? null : selectedRows.map(({ i, lo, hi }) => ({
+            x: cx + estimateTextWidthPx(displayTexts[i].slice(0, lo), labelDot),
+            y: cy + rowTops[i] - topNudge,
+            w: Math.max(1, estimateTextWidthPx(displayTexts[i].slice(0, hi), labelDot)
+              - estimateTextWidthPx(displayTexts[i].slice(0, lo), labelDot)),
+            h: rowHeights[i],
+          }));
 
           const want = Array.isArray(rects) && rects.length ? rects.length : Array.isArray(fallback) ? fallback.length : 0;
           ensureCount(want);
@@ -1446,22 +1369,21 @@ export function createHudRenderListRuntime({
           return;
         }
 
-        const inRange = Number.isFinite(row) && row >= win.scrollTop && row < win.scrollTop + visibleLines;
-        if (!inRange) {
+        const matches = [];
+        for (let i = 0; i < displayTexts.length; i += 1) {
+          const sourceRow = slice[i]?.sourceRow ?? (win.scrollTop + i);
+          if (sourceRow !== row) continue;
+          const firstCol = slice[i]?.sourceStartCol ?? 0;
+          if (firstCol <= col) matches.push(i);
+        }
+        const localRow = matches.at(-1);
+        if (localRow == null) {
           objs.caret.visible = false;
         } else {
-          const localRow = row - win.scrollTop;
-          const starts = new Array(displayTexts.length);
-          let acc = 0;
-          for (let i = 0; i < displayTexts.length; i++) {
-            starts[i] = acc;
-            acc += displayTexts[i].length;
-            if (i < displayTexts.length - 1) acc += 1;
-          }
-          const totalTextLen = acc;
-          const line = sourceTexts[localRow] ?? displayTexts[localRow] ?? "";
           const prefix = displayPrefixLengths[localRow] ?? 0;
-          const cc = clamp(Number.isFinite(col) ? col : 0, 0, line.length);
+          const line = sourceTexts[localRow] ?? "";
+          const sourceOffset = slice[localRow]?.sourceStartCol ?? 0;
+          const cc = clamp(col - sourceOffset, 0, line.length);
           const charIndex = (starts[localRow] ?? 0) + prefix + cc;
           const lineStartIndex = starts[localRow] ?? 0;
           const lineDisplayText = displayTexts[localRow] ?? "";
@@ -1491,7 +1413,7 @@ export function createHudRenderListRuntime({
           const syncedMetricOnCurrentRow = syncedMetricIndex >= lineStartIndex && syncedMetricIndex <= lineEndIndex;
 
           let x0 = cx + estimateTextWidthPx(lineDisplayText.slice(0, charDisplayCol), labelDot);
-          let y0 = cy + localRow * (12 * labelDot);
+          let y0 = cy + rowTops[localRow];
           let h0 = 12 * labelDot;
 
           const topNudge = (7 * labelDot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;

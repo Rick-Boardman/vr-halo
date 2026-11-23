@@ -27,6 +27,7 @@ import {
 import { HUD_TEXT_DEFAULT_COLOR, HUD_TEXT_MUTED_COLOR, HUD_TEXT_BRIGHT_COLOR } from "./hud-text-style.js";
 import { getNormalizedClientPoint } from "./pointer-coordinates.js";
 import { clamp } from "./scalar-math.js";
+import { estimateTextWidthPx } from "./text-measurement.js";
 import { createWebXrSystemKeyboardBridge } from "./webxr-system-keyboard.js";
 
 function splitLines(text) {
@@ -882,58 +883,60 @@ export function createHudTextEditor({
     const topNudge = (7 * dot) * HUD_TEXT_ASCENDER_NUDGE_FACTOR;
     const localY = -(p.y - contentY) - topNudge;
 
-    let nextX = cx;
-    let nextY = cy;
-    let placed = false;
-
-    try {
-      const objs = hud?.objects?.windows?.[key];
-      const troikaText = objs?._troikaContentText?._textMesh;
-      const tri = troikaText?.textRenderInfo;
-      const meta = Array.isArray(objs?._visibleLineMeta) ? objs._visibleLineMeta : null;
-      if (tri && meta && typeof _getCaretAtPoint === "function") {
-        const caret = _getCaretAtPoint(tri, localX, localY);
-        if (caret && Number.isFinite(caret.charIndex)) {
-          const visibleText = meta.map((m) => String(m?.text ?? "")).join("\n");
-          const idx = clamp(Math.floor(caret.charIndex), 0, visibleText.length);
-          let rowLocal = 0;
-          let lastNl = -1;
-          for (let i = 0; i < idx; i += 1) {
-            if (visibleText.charCodeAt(i) === 10) {
-              rowLocal += 1;
-              lastNl = i;
-            }
-          }
-          const colLocal = idx - (lastNl + 1);
-          const resolvedRow = clamp(scrollTop + rowLocal, 0, Math.max(0, lines.length - 1));
-          const prefix = Math.max(0, Math.floor(Number(meta[rowLocal]?.displayPrefixLength) || 0));
-          const source = String(meta[rowLocal]?.sourceText ?? meta[rowLocal]?.text ?? lines[resolvedRow] ?? "");
-          nextY = resolvedRow;
-          nextX = clamp(colLocal - prefix, 0, source.length);
-          placed = true;
-        }
+    const objs = hud?.objects?.windows?.[key];
+    const tri = objs?._troikaContentText?._textMesh?.textRenderInfo;
+    const meta = objs?._visibleLineMeta ?? [];
+    const contentLocalY = p.y - contentY;
+    const last = meta.at(-1);
+    if (last && contentLocalY >= last.rowTopPx + last.rowHeightPx) {
+      // A click in blank space is past all visible text, not a click at
+      // the nearest glyph's x coordinate on the last row.
+      if (scrollTop + meta.length >= (w._scrollTotalLines ?? scrollTop + meta.length)) {
+        const y = Math.min(lines.length - 1, (maxDisplayLines || lines.length) - 1);
+        return { x: lines[y]?.length ?? 0, y };
       }
-    } catch {
-      // no-op
+      return {
+        y: last.sourceRow ?? clamp(scrollTop + meta.length - 1, 0, lines.length - 1),
+        x: (last.sourceStartCol ?? 0) + (last.sourceText ?? last.text).length,
+      };
     }
 
-    if (!placed) {
-      const displayIdx = Math.floor((p.y - contentY) / Math.max(1, lineH));
-      const lineIdx = clamp(displayIdx + scrollTop, 0, Math.max(0, lines.length - 1));
-      nextY = lineIdx;
+    const getSource = (index, col) => {
+      const row = meta[index];
+      const y = clamp(row?.sourceRow ?? scrollTop + index, 0, lines.length - 1);
+      const start = row?.sourceStartCol ?? 0;
+      const prefix = row?.displayPrefixLength ?? 0;
+      const length = (row?.sourceText ?? lines[y] ?? "").length;
+      return { y, x: start + clamp(col - prefix, 0, length) };
+    };
 
-      const charW = 6 * dot;
-      const meta = Array.isArray(hud?.objects?.windows?.[key]?._visibleLineMeta)
-        ? hud.objects.windows[key]._visibleLineMeta
-        : null;
-      const localRow = clamp(displayIdx, 0, Math.max(0, (meta?.length ?? 1) - 1));
-      const prefix = Math.max(0, Math.floor(Number(meta?.[localRow]?.displayPrefixLength) || 0));
-      const line = String(meta?.[localRow]?.sourceText ?? lines[nextY] ?? "");
-      const nextCx = Math.round(localX / Math.max(1, charW)) - prefix;
-      nextX = clamp(nextCx, 0, line.length);
+    const visibleText = meta.map((row) => String(row?.text ?? "")).join("\n");
+    if (visibleText && tri?.parameters?.text === visibleText) {
+      try {
+        const caret = _getCaretAtPoint(tri, localX, localY);
+        if (Number.isFinite(caret?.charIndex)) {
+          const before = visibleText.slice(0, caret.charIndex).split("\n");
+          return getSource(before.length - 1, before.at(-1).length);
+        }
+      } catch {
+        // The shared text mesh may still be waiting for glyph metrics.
+      }
     }
 
-    return { x: nextX, y: nextY };
+    const estimatedRow = Math.floor(contentLocalY / Math.max(1, lineH));
+    let index = meta.findIndex((row) => contentLocalY < row.rowTopPx + row.rowHeightPx);
+    if (index < 0) index = meta.length ? meta.length - 1 : Math.max(0, estimatedRow);
+    const display = meta[index]?.text ?? lines[clamp(scrollTop + index, 0, lines.length - 1)] ?? "";
+    let col = 0;
+    let left = 0;
+    for (const glyph of display) {
+      const end = col + glyph.length;
+      const right = estimateTextWidthPx(display.slice(0, end), dot);
+      if (localX <= (left + right) / 2) break;
+      col = end;
+      left = right;
+    }
+    return getSource(index, col);
   }
 
   function isPointInsideFooter(px, py) {
