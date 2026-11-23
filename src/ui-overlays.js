@@ -741,6 +741,14 @@ export function createHudUiOverlays({
         break;
       }
 
+      const titleGrip = objs?._titleGripHitRect;
+      if (titleGrip && w.draggable && !w.dragging &&
+        rectContains(titleGrip.x, titleGrip.y, titleGrip.w, titleGrip.h, pointer.x, pointer.y)) {
+        hoverId = `${key}:grip`;
+        hoverText = "Drag panel";
+        break;
+      }
+
       // Resize — same rect as the drawn grip (9-slice windows inset the handle).
       const resizeRect = controls.resize;
       if (

@@ -37,6 +37,14 @@ export function createHudNativeControlTextures(THREE) {
       if (glyph === "up") { c.moveTo(24, 46); c.lineTo(40, 29); c.lineTo(56, 46); }
       if (glyph === "down") { c.moveTo(24, 34); c.lineTo(40, 51); c.lineTo(56, 34); }
       c.stroke();
+      if (glyph === "grip") {
+        c.fillStyle = css(ink);
+        for (const y of [23, 40, 57]) {
+          for (const x of [30, 50]) {
+            c.beginPath(); c.arc(x, y, 5.8, 0, Math.PI * 2); c.fill();
+          }
+        }
+      }
       texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
       texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
       textures.set(key, texture);

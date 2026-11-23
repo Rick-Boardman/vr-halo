@@ -340,41 +340,40 @@ export function createHudWindowRenderLayoutRuntime({
       }
     }
 
+    const controlSlotW = objs.nineSlice ? 18 : titleChrome.controlSlotW;
+    const chrome = !titleChrome.skinned ? appearance?.controlChrome : null;
+    const hovered = hud.overlay?.tooltip?._hoverId;
+    let nativeGripShown = false;
+    objs._titleGripHitRect = null;
     if (Array.isArray(objs.titleDots)) {
-      const nativeGrip = !!appearance && Number.isFinite(appearance.headerControl);
       const showTitleDots = !isHotbar && effectiveTitleH > 0 &&
-        win.showTitleDots !== false && !titleChrome.skinned &&
-        (!nativeGrip || win.draggable !== false);
+        win.showTitleDots !== false && !titleChrome.skinned;
+      nativeGripShown = !!(showTitleDots && chrome && win.draggable !== false);
       for (let index = 0; index < objs.titleDots.length; index += 1) {
         const dot = objs.titleDots[index];
         if (!dot) continue;
-        // Decoration only: Halo's existing title bar keeps the whole move
-        // hit region, including the grip, without changing resize or buttons.
-        dot.visible = showTitleDots && (nativeGrip || index < 3);
-        if (!dot.visible) continue;
-        if (nativeGrip) {
-          dot.userData.legacyTitleDotColor ??= dot.material?.color?.getHex?.();
-          dot.material?.color?.setHex(win.dragging
-            ? (appearance.headerControlHover ?? appearance.headerControl)
-            : appearance.headerControl);
-          if (dot.material) dot.material.opacity = 1;
-          const size = Math.min(6, Math.max(3, (effectiveTitleH - 4) / 3));
-          const step = size + 1;
-          positionRect(dot, titleChrome.x + 9 + (index % 2) * step,
-            titleChrome.y + (effectiveTitleH - (size + 2 * step)) / 2 + Math.floor(index / 2) * step,
-            size, size, 0.00218 + lift);
+        if (index === 0 && nativeGripShown) {
+          // It is part of the existing title move target. Only its visual
+          // surface and hover region are new; never a second click hit region.
+          const height = Math.min(24, Math.max(14, effectiveTitleH - 2));
+          const grip = { x: titleChrome.x + 7, y: titleChrome.y + (effectiveTitleH - height) / 2,
+            w: 25, h: height };
+          const colors = win.dragging
+            ? { fill:chrome.normal.ink, border:chrome.hover.border, ink:chrome.normal.fill }
+            : hovered === key + ":grip" ? chrome.hover : chrome.normal;
+          controlTextures.apply(dot, "grip", colors);
+          objs._titleGripHitRect = grip;
+          dot.visible = true;
+          positionRect(dot, grip.x, grip.y, grip.w, grip.h, 0.00218 + lift);
         } else {
-          if (Number.isFinite(dot.userData.legacyTitleDotColor)) dot.material?.color?.setHex(dot.userData.legacyTitleDotColor);
-          if (dot.material) dot.material.opacity = 0.6;
-          positionRect(dot, titleChrome.x + 8 + index * 7,
+          controlTextures.apply(dot, "grip", null);
+          dot.visible = showTitleDots && !chrome;
+          if (dot.visible) positionRect(dot, titleChrome.x + 8 + index * 7,
             titleChrome.y + Math.floor((effectiveTitleH - 4) / 2), 4, 4, 0.00218 + lift);
         }
       }
     }
 
-    const controlSlotW = objs.nineSlice ? 18 : titleChrome.controlSlotW;
-    const chrome = !titleChrome.skinned ? appearance?.controlChrome : null;
-    const hovered = hud.overlay?.tooltip?._hoverId;
     controlTextures.apply(objs.closeBtn, "close", chrome ? (hovered === key + ":close" ? chrome.hover : chrome.normal) : null);
     controlTextures.apply(objs.minBtn, "min", chrome ? (hovered === key + ":min" ? chrome.hover : chrome.normal) : null);
     if (!titleChrome.skinned && Number.isFinite(appearance?.headerControl)) {
@@ -428,7 +427,7 @@ export function createHudWindowRenderLayoutRuntime({
       (objs.actionBtn ? (key === "debug" ? 2 : 1) : 0);
     const titleStartX = key === "hotbar"
       ? win.x + pad
-      : titleChrome.x + (titleChrome.skinned ? 8 : 34);
+      : titleChrome.x + (titleChrome.skinned ? 8 : nativeGripShown ? 41 : 34);
     const titleMaxW = Math.max(
       0,
       titleChrome.w - (btnSlots ? controlSlotW * btnSlots : 0) - (titleStartX - titleChrome.x) - 8

@@ -737,7 +737,7 @@ export function createHudWindowObjectsRuntime({
       }
 
       const dotTexture = getTitleDotTexture();
-      objs.titleDots = Array.from({ length: 6 }, () => {
+      objs.titleDots = Array.from({ length: 3 }, () => {
         const dot = makeRect({
           x: 0,
           y: 0,
