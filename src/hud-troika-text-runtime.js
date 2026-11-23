@@ -267,6 +267,8 @@ export function createHudTroikaTextRuntime({
     outlineColor = 0x000000,
     outlineOpacity = 0,
     fontWeight = null,
+    inkCenterY = null,
+    ellipsis = false,
   }) {
     if (!pixel) return;
     // Troika-only text path.
@@ -303,6 +305,8 @@ export function createHudTroikaTextRuntime({
       outlineColor,
       outlineOpacity,
       fontWeight,
+      inkCenterY,
+      ellipsis,
     });
   }
 
@@ -732,6 +736,8 @@ export function createHudTroikaTextRuntime({
       if (!TextCtor) throw new Error("TroikaPixelText: Text ctor not ready");
 
       this._textMesh = new TextCtor();
+      this._inkCenter = null;
+      this._textMesh.addEventListener?.("synccomplete", () => this._applyInkCenter(true));
       this._textMesh.text = "";
       this._textMesh.anchorX = "left";
       this._textMesh.anchorY = "top";
@@ -887,7 +893,19 @@ export function createHudTroikaTextRuntime({
     * @param {Array|null} [opts.colorRanges] — per-char color ranges
     * @param {boolean} [opts.truncateSingleLine=true] — whether single-line text should be truncated to fit maxWidth.
      */
-      setText({ text, x, y, dot = 4, gap = HUD_TEXT_ESTIMATE_GAP_PX, color, maxWidth = null, colorRanges = null, truncateSingleLine = true, outlineWidth = 0, outlineColor = 0x000000, outlineOpacity = 0, fontWeight = null }) {
+      _applyInkCenter(invalidate = false) {
+        if (!this._inkCenter) return;
+        const info = this._textMesh.textRenderInfo;
+        if (!info || (info.parameters?.text != null && info.parameters.text !== this._inkCenter.text)) return;
+        const [, bottom, , top] = info.visibleBounds ?? [];
+        if (Number.isFinite(bottom) && Number.isFinite(top)) {
+          this._textMesh.position.y = this._inkCenter.y - (bottom + top) / 2;
+          // Layout may otherwise be idle when the asynchronous font metrics land.
+          if (invalidate) hud._dirty = true;
+        }
+      }
+
+      setText({ text, x, y, dot = 4, gap = HUD_TEXT_ESTIMATE_GAP_PX, color, maxWidth = null, colorRanges = null, truncateSingleLine = true, outlineWidth = 0, outlineColor = 0x000000, outlineOpacity = 0, fontWeight = null, inkCenterY = null, ellipsis = false }) {
       if (typeof color === "number") this.setColor(color);
       try {
         const ow = Number(outlineWidth);
@@ -1127,8 +1145,14 @@ export function createHudTroikaTextRuntime({
       if (truncateSingleLine && !isMultiline && mw != null && Number.isFinite(mw)) {
         const perChar = estimateHudGlyphAdvancePx(dot, gap);
         const maxChars = Math.max(0, Math.floor((mw + gap) / Math.max(1, perChar)));
-        if (finalText.length > maxChars) finalText = finalText.slice(0, maxChars);
+        if (finalText.length > maxChars) finalText = ellipsis && maxChars > 1
+          ? finalText.slice(0, maxChars - 1).trimEnd() + "…"
+          : finalText.slice(0, maxChars);
       }
+      this._inkCenter = Number.isFinite(inkCenterY) && finalText
+        ? { y:this._textMesh.position.y + y - inkCenterY - topNudge, text:finalText }
+        : null;
+      this._applyInkCenter();
 
       // Use Troika layout for multiline text so width is respected regardless
       // of font metrics (prevents mission/list lines from overflowing panels).

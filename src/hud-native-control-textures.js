@@ -24,10 +24,11 @@ export function createHudNativeControlTextures(THREE) {
       const canvas = document.createElement("canvas"); canvas.width = 80; canvas.height = 80;
       const c = canvas.getContext("2d");
       if (!c) return;
-      const trim = glyph === "close" || glyph === "min" ? 8 : 5;
+      const trim = glyph === "resize" ? 9 : glyph === "close" || glyph === "min" ? 8 : 5;
       c.beginPath();
-      if (typeof c.roundRect === "function") c.roundRect(trim, 5, 80 - trim * 2, 70, 11);
-      else c.rect(trim, 5, 80 - trim * 2, 70);
+      const y = glyph === "resize" ? 9 : 5;
+      if (typeof c.roundRect === "function") c.roundRect(trim, y, 80 - trim * 2, 80 - y * 2, 11);
+      else c.rect(trim, y, 80 - trim * 2, 80 - y * 2);
       c.fillStyle = css(fill); c.fill();
       c.strokeStyle = css(border); c.lineWidth = 4; c.stroke();
       c.strokeStyle = css(ink); c.lineWidth = 8; c.lineCap = "round"; c.lineJoin = "round";
@@ -37,9 +38,9 @@ export function createHudNativeControlTextures(THREE) {
       if (glyph === "up") { c.moveTo(24, 46); c.lineTo(40, 29); c.lineTo(56, 46); }
       if (glyph === "down") { c.moveTo(24, 34); c.lineTo(40, 51); c.lineTo(56, 34); }
       if (glyph === "resize") {
-        c.lineWidth = 6;
-        // Pin the three strong diagonal marks in the lower-right corner.
-        for (const d of [19, 31, 43]) {
+        c.lineWidth = 5.5;
+        // Inset the traditional stair-step grip instead of filling the tile.
+        for (const d of [12, 25, 38]) {
           c.moveTo(59 - d, 59); c.lineTo(59, 59 - d);
         }
       }

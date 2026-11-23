@@ -356,7 +356,7 @@ export function createHudWindowRenderLayoutRuntime({
           // It is part of the existing title move target. Only its visual
           // surface and hover region are new; never a second click hit region.
           const height = Math.min(24, Math.max(14, effectiveTitleH - 2));
-          const grip = { x: titleChrome.x + 7, y: titleChrome.y + (effectiveTitleH - height) / 2,
+          const grip = { x: titleChrome.x + titleChrome.edgeInset, y: titleChrome.y + (effectiveTitleH - height) / 2,
             w: 25, h: height };
           const colors = win.dragging
             ? { fill:chrome.normal.ink, border:chrome.hover.border, ink:chrome.normal.fill }
@@ -416,7 +416,8 @@ export function createHudWindowRenderLayoutRuntime({
         if (chrome) {
           const colors = win.resizing
             ? { fill:chrome.normal.ink, border:chrome.hover.border, ink:chrome.normal.fill }
-            : hovered === key + ":resize" ? chrome.hover : chrome.normal;
+            : hovered === key + ":resize" ? chrome.hover
+              : { ...chrome.normal, fill: appearance.surface ?? chrome.normal.fill };
           controlTextures.apply(objs.resizeHandle, "resize", colors);
           // Body and scrollbar surfaces are emitted later in this same pass.
           setMeshRenderOrder(objs.resizeHandle, roBase + HUD_RENDER_ORDER_TEXT_OFFSET + 8);
@@ -437,11 +438,13 @@ export function createHudWindowRenderLayoutRuntime({
       (objs.actionBtn ? (key === "debug" ? 2 : 1) : 0);
     const titleStartX = key === "hotbar"
       ? win.x + pad
-      : titleChrome.x + (titleChrome.skinned ? 8 : nativeGripShown ? 41 : 34);
-    const titleMaxW = Math.max(
-      0,
-      titleChrome.w - (btnSlots ? controlSlotW * btnSlots : 0) - (titleStartX - titleChrome.x) - 8
-    );
+      : titleChrome.x + (titleChrome.skinned ? 8 : nativeGripShown ? titleChrome.edgeInset + 25 + 10 : 34);
+    const nativeControls = [controlRects.action, controlRects.copy, controlRects.min, controlRects.close].filter(Boolean);
+    const titleRight = titleChrome.edgeInset
+      ? Math.min(titleChrome.x + titleChrome.w - titleChrome.edgeInset,
+        ...nativeControls.map(control => control.x - 8))
+      : titleChrome.x + titleChrome.w - (btnSlots ? controlSlotW * btnSlots : 0) - 8;
+    const titleMaxW = Math.max(0, titleRight - titleStartX);
     if (key === "hotbar") {
       // Hotbar is a strip, not a titled panel. Do not draw the title at all.
       // Hiding avoids a one-frame Troika update mismatch (content vs position)
@@ -450,9 +453,11 @@ export function createHudWindowRenderLayoutRuntime({
     } else {
       setPlainTextMaybeTroika({
         pixel: objs.titleText,
-        text: win.title || "",
+        text: titleChrome.edgeInset ? String(win.title || "").replace(/[\r\n]+/g, " ") : win.title || "",
         x: titleStartX,
         y: titleGlyphY,
+        inkCenterY: titleChrome.edgeInset ? titleChrome.y + titleChrome.h / 2 : null,
+        ellipsis: !!titleChrome.edgeInset,
         dot: titleDot,
         maxWidth: titleMaxW,
         color: titleChrome.skinned ? titlePoc.color : (win.titleTextColor ?? HUD_TEXT_DEFAULT_COLOR),
