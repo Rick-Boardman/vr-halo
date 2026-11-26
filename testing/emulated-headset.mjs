@@ -105,6 +105,45 @@ export async function aimController(page, runtime, at, { hand = "right", from = 
   await settle(250);
 }
 
+/**
+ * The first object a controller can hit cleanly: candidates are `[{ id, world: [x, y, z] }]` and scene meshes carry
+ * `userData[idKey]`. A candidate qualifies when the ray from the controller to its point (or to one of a few points
+ * across the object) meets that object and no other candidate anywhere along the ray, so a trigger there can only
+ * mean it. Returns `{ id, point }`, or null when every candidate is covered. It searches the runtime's `scene`, or
+ * the scene the HUD is mounted in.
+ */
+export function clearShot(page, runtime, candidates, { hand = "right", idKey = "id" } = {}) {
+  return page.evaluate(async ({ expr, candidates, hand, idKey }) => {
+    const { renderer, scene: given, hudSystem } = (0, eval)(expr);
+    const THREE = await import("three");
+    // The app's scene, or the scene the HUD is mounted in.
+    let scene = given ?? hudSystem?.hud?.root ?? null;
+    while (!given && scene?.parent) scene = scene.parent;
+    if (!scene) throw new Error("clearShot: the runtime gives no scene and no HUD root");
+    const from = renderer.xr.getController(hand === "right" ? 1 : 0).getWorldPosition(new THREE.Vector3());
+    const ids = new Set(candidates.map((c) => c.id));
+    const meshes = [];
+    scene.traverse((o) => { if (o.isMesh && o.visible && ids.has(o.userData?.[idKey])) meshes.push(o); });
+    for (const c of candidates) {
+      const own = meshes.filter((m) => m.userData[idKey] === c.id);
+      const points = [new THREE.Vector3(...c.world)];
+      for (const m of own.slice(0, 1)) {
+        m.geometry?.computeBoundingBox?.();
+        const bb = m.geometry?.boundingBox;
+        if (!bb) continue;
+        for (const [u, v] of [[0.5, 0.8], [0.5, 0.2], [0.2, 0.5], [0.8, 0.5]]) {
+          points.push(m.localToWorld(new THREE.Vector3(bb.min.x + (bb.max.x - bb.min.x) * u, bb.min.y + (bb.max.y - bb.min.y) * v, 0)));
+        }
+      }
+      for (const p of points) {
+        const hits = new THREE.Raycaster(from, p.clone().sub(from).normalize()).intersectObjects(meshes, false);
+        if (hits.length && hits.every((h) => h.object.userData[idKey] === c.id)) return { id: c.id, point: { x: p.x, y: p.y, z: p.z } };
+      }
+    }
+    return null;
+  }, { expr: runtime, candidates, hand, idKey });
+}
+
 /** Press and release a controller's trigger: a WebXR select. */
 export async function pullTrigger(page, { hand = "right", holdMs = 150 } = {}) {
   await page.evaluate(hand => globalThis.__haloEmulatedHeadset.controllers[hand].updateButtonValue("trigger", 1), hand);
