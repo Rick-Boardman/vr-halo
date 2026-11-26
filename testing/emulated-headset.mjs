@@ -60,8 +60,9 @@ export async function exitVr(page, runtime, { timeout = 10000 } = {}) {
 }
 
 /**
- * The world point at the centre of a HUD window (or at u, v across it) while presenting: Halo's HUD is a sphere
- * around the viewer, so a layout pixel is a yaw and pitch from the HUD root, cast onto the window's own hit mesh.
+ * The world point at the centre of a HUD window (or at u, v across it, v down from its top) while presenting. The point
+ * is placed on the window's own hit mesh, as Halo's hit test reads it: its local rectangle is the window's rectangle.
+ * (Mapping layout pixels to angles across the whole HUD drifted by a row or more on a tall window.)
  */
 export function hudWindowPoint(page, runtime, key, { u = 0.5, v = 0.5 } = {}) {
   return page.evaluate(async ({ expr, key, u, v }) => {
@@ -71,15 +72,25 @@ export function hudWindowPoint(page, runtime, key, { u = 0.5, v = 0.5 } = {}) {
     const w = hud.ui.windows[key];
     if (!w) throw new Error(`no HUD window ${key}`);
     hud.root.updateWorldMatrix(true, true);
-    const qRoot = new THREE.Quaternion().setFromRotationMatrix(hud.root.matrixWorld);
     const origin = new THREE.Vector3().setFromMatrixPosition(hud.root.matrixWorld);
-    const height = w.collapsed ? 28 : w.h;
-    const yaw = ((w.x + w.w * u) / hud.layoutW - 0.5) * hudSystem.getVrYawPerScreen();
-    const pitch = (0.5 - (w.y + height * v) / hud.layoutH) * hudSystem.getVrPitchPerScreen();
-    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)).applyQuaternion(qRoot).normalize();
     const mesh = hud.objects?.windows?.[key]?.hit;
+    let target;
+    if (mesh?.geometry) {
+      mesh.updateWorldMatrix(true, false);
+      mesh.geometry.computeBoundingBox();
+      const bb = mesh.geometry.boundingBox;
+      target = mesh.localToWorld(new THREE.Vector3(bb.min.x + (bb.max.x - bb.min.x) * u, bb.max.y - (bb.max.y - bb.min.y) * v, (bb.min.z + bb.max.z) / 2));
+    } else {
+      const qRoot = new THREE.Quaternion().setFromRotationMatrix(hud.root.matrixWorld);
+      const height = w.collapsed ? 28 : w.h;
+      const yaw = ((w.x + w.w * u) / hud.layoutW - 0.5) * hudSystem.getVrYawPerScreen();
+      const pitch = (0.5 - (w.y + height * v) / hud.layoutH) * hudSystem.getVrPitchPerScreen();
+      target = origin.clone().add(new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)).applyQuaternion(qRoot));
+    }
+    // Onto the surface itself (a window may curve with the HUD), along the line from the HUD's centre.
+    const dir = target.clone().sub(origin).normalize();
     const hit = mesh ? new THREE.Raycaster(origin, dir).intersectObject(mesh, false)[0] : null;
-    const point = hit?.point ?? origin.clone().addScaledVector(dir, 2);
+    const point = hit?.point ?? target;
     return { x: point.x, y: point.y, z: point.z, onWindow: !!hit };
   }, { expr: runtime, key, u, v });
 }

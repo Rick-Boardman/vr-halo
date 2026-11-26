@@ -61,6 +61,16 @@ try {
   const shown = await shownHudWindows(page, runtime);
   step('shownHudWindows lists the open windows', shown.windows.some((w) => w.key === 'help'), shown.windows.map((w) => w.key).join(', '));
 
+  // A tall window of pressable rows, to aim at precisely in the headset.
+  await page.evaluate(() => {
+    const { hudSystem } = globalThis.__haloChatExample;
+    globalThis.__pressedRows = [];
+    // Between the table and help windows, above the hotbar: covering none of them.
+    hudSystem.createWindow('tall-list', { title: 'Tall list', x: 486, y: 16, w: 310, h: 690, scrollable: false });
+    hudSystem.setWindowLines('tall-list', Array.from({ length: 30 }, (_, i) => ({ text: `Row ${i + 1}`, onClick: () => globalThis.__pressedRows.push(i + 1) })));
+  });
+  await frames(page, 6);
+
   await enterVr(page, runtime);
   const presenting = await page.evaluate(() => {
     const { renderer, hudSystem } = globalThis.__haloChatExample;
@@ -81,6 +91,18 @@ try {
     const front = await page.evaluate(() => globalThis.__haloChatExample.hudSystem.hud.ui.order.at(-1));
     step(`the trigger on ${key} brings it to the front`, front === key, `front ${front}`);
   }
+
+  // Rows near the bottom of a tall window are hit exactly: the point is placed on the window's own mesh.
+  // In the headset the HUD is laid out smaller with larger rows, so row 15 is near the bottom of what shows.
+  for (const wanted of [15, 3]) {
+    const row = await hudRowPoint(page, runtime, 'tall-list', new RegExp(`^Row ${wanted}$`));
+    step(`row ${wanted} shows in the headset`, row.found, row.found ? '' : JSON.stringify(row.rows));
+    const at = await hudWindowPoint(page, runtime, 'tall-list', { u: row.u, v: row.v });
+    await aimController(page, runtime, at, { from: { x: 0.2, y: 1.45, z: -0.1 } });
+    await pullTrigger(page);
+  }
+  const pressed = await page.evaluate(() => globalThis.__pressedRows);
+  step('the trigger on a row of a tall window presses exactly that row', pressed.join() === '15,3', JSON.stringify(pressed));
 
   const helpPoint = await hudWindowPoint(page, runtime, 'help', { v: 0.6 });
   const shot = await clearShot(page, runtime, [{ id: 'help', world: [helpPoint.x, helpPoint.y, helpPoint.z] }], { idKey: 'windowKey' });
