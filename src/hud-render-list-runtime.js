@@ -874,23 +874,36 @@ export function createHudRenderListRuntime({
             button._trailingIconReservedWidth = 0;
           }
 
-          const textInset = Number.isFinite(button.textInsetPx)
+          // Without an explicit inset a footer label is centred on its measured ink in the space left of any
+          // trailing icon, and truncated with an ellipsis only when it cannot fit that space.
+          const explicitInset = Number.isFinite(button.textInsetPx);
+          const iconReserve = Math.max(0, Number(button._trailingIconReservedWidth) || 0);
+          const textInset = explicitInset
             ? clamp(Number(button.textInsetPx), 4, Math.max(4, buttonW - 4))
-            : Math.max(4, Math.floor(buttonW * 0.28));
-          const textX = nextX + textInset;
-          const textAlign = Number.isFinite(button.heightPx) ? 0.5 : 0.25;
+            : FOOTER_LABEL_SIDE_PADDING_PX;
+          const textSpace = Math.max(6, buttonW - textInset - FOOTER_LABEL_SIDE_PADDING_PX - iconReserve);
+          const fittedText = explicitInset ? String(button.text ?? "") : fitFooterLabel(String(button.text ?? ""), textSpace, buttonDot);
+          const textX = explicitInset
+            ? nextX + textInset
+            : nextX + textInset + Math.max(0, Math.floor((textSpace - Math.min(textSpace, estimateTextWidthPx(fittedText, buttonDot))) / 2));
+          const textAlign = explicitInset && !Number.isFinite(button.heightPx) ? 0.25 : 0.5;
           const textY = buttonY + Math.max(1, Math.floor((footerButtonH - lineH) * textAlign));
           if (hasButtonText && label?.setRenderOrder && label?.setText) {
             try {
               label.setRenderOrder(roBase + 20);
               label.setText({
-                text: String(button.text ?? ""),
+                text: fittedText,
                 x: textX,
                 y: textY,
                 dot: buttonDot,
                 color: typeof button.textColor === "number" ? Number(button.textColor) >>> 0 : 0xffffff,
-                maxWidth: Math.max(6, buttonW - textInset - 4 - Math.max(0, Number(button._trailingIconReservedWidth) || 0)),
-                truncateSingleLine: true,
+                maxWidth: explicitInset ? Math.max(6, buttonW - textInset - 4 - iconReserve) : textSpace,
+                truncateSingleLine: explicitInset,
+                ...(explicitInset ? {} : {
+                  inkCenterX: nextX + textInset + textSpace / 2,
+                  inkCenterY: buttonY + footerButtonH / 2,
+                  inkFitWidth: textSpace,
+                }),
               });
               if (label?.mesh) label.mesh.visible = true;
             } catch {
@@ -1503,6 +1516,16 @@ export function layoutHudAccordionRow(role, width, top, height, viewportHeight, 
   if (first || last) draw(x + 3, top + height - 1, w - 4, 1, ink.border, 18);
   if (!first && selected) draw(x + 10, top + 2, w - 16, height - 4, ink.selected, 18);
   return rects;
+}
+
+const FOOTER_LABEL_SIDE_PADDING_PX = 8;
+
+/** Shorten a footer label to the estimated width available, ending it with an ellipsis when cut. */
+function fitFooterLabel(text, maxWidth, dot) {
+  if (estimateTextWidthPx(text, dot) <= maxWidth) return text;
+  let end = text.length;
+  while (end > 1 && estimateTextWidthPx(`${text.slice(0, end).trimEnd()}…`, dot) > maxWidth) end -= 1;
+  return `${text.slice(0, end).trimEnd()}…`;
 }
 
 function normalizeFooterActions(entries, appearance) {
