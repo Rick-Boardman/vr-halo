@@ -108,8 +108,9 @@ export async function aimController(page, runtime, at, { hand = "right", from = 
 /**
  * The first object a controller can hit cleanly: candidates are `[{ id, world: [x, y, z] }]` and scene meshes carry
  * `userData[idKey]`. A candidate qualifies when the ray from the controller to its point (or to one of a few points
- * across the object) meets that object and no other candidate anywhere along the ray, so a trigger there can only
- * mean it. Returns `{ id, point }`, or null when every candidate is covered. It searches the runtime's `scene`, or
+ * across the object) meets that object and no other candidate anywhere along the ray, and no HUD window stands in
+ * front of it (the HUD takes a press first), so a trigger there can only mean it. HUD windows are candidates' blockers
+ * unless the candidates are HUD windows themselves (`idKey: "windowKey"`). Returns `{ id, point }`, or null when every candidate is covered. It searches the runtime's `scene`, or
  * the scene the HUD is mounted in.
  */
 export function clearShot(page, runtime, candidates, { hand = "right", idKey = "id" } = {}) {
@@ -124,6 +125,8 @@ export function clearShot(page, runtime, candidates, { hand = "right", idKey = "
     const ids = new Set(candidates.map((c) => c.id));
     const meshes = [];
     scene.traverse((o) => { if (o.isMesh && o.visible && ids.has(o.userData?.[idKey])) meshes.push(o); });
+    const blockers = idKey === "windowKey" ? [] : Object.values(hudSystem?.hud?.objects?.windows ?? {})
+      .map((objects) => objects?.hit).filter((hit) => hit?.isMesh && hit.visible);
     for (const c of candidates) {
       const own = meshes.filter((m) => m.userData[idKey] === c.id);
       const points = [new THREE.Vector3(...c.world)];
@@ -136,8 +139,12 @@ export function clearShot(page, runtime, candidates, { hand = "right", idKey = "
         }
       }
       for (const p of points) {
-        const hits = new THREE.Raycaster(from, p.clone().sub(from).normalize()).intersectObjects(meshes, false);
-        if (hits.length && hits.every((h) => h.object.userData[idKey] === c.id)) return { id: c.id, point: { x: p.x, y: p.y, z: p.z } };
+        const ray = new THREE.Raycaster(from, p.clone().sub(from).normalize());
+        const hits = ray.intersectObjects(meshes, false);
+        if (!hits.length || !hits.every((h) => h.object.userData[idKey] === c.id)) continue;
+        const hud = ray.intersectObjects(blockers, false)[0];
+        if (hud && hud.distance < hits[0].distance) continue;
+        return { id: c.id, point: { x: p.x, y: p.y, z: p.z } };
       }
     }
     return null;
