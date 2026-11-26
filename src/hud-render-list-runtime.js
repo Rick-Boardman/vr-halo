@@ -770,6 +770,8 @@ export function createHudRenderListRuntime({
                 color: typeof button.textColor === "number" ? Number(button.textColor) >>> 0 : 0xffffff,
                 maxWidth: textMaxWidth,
                 truncateSingleLine: true,
+                // A label cut short says so ("Advanced nodes…", not "Advanced nodes (").
+                ellipsis: true,
               });
               if (label?.mesh) label.mesh.visible = true;
               button.labelObject = label;

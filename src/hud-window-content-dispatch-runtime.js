@@ -840,7 +840,6 @@ export function createHudWindowContentDispatchRuntime({
     const dot = labelDot;
     const digitW = 5 * dot;
     const digitH = 7 * dot;
-    const numY = startY + slot - digitH - 2;
 
     setPlainTextMaybeTroika({
       pixel: hud.objects.hotbarNumbersText,
@@ -894,7 +893,7 @@ export function createHudWindowContentDispatchRuntime({
           pixel: t,
           text: numberText,
           x: dx,
-          y: numY,
+          y: (metric?.y ?? startY) + slot - digitH - 2,
           dot,
           color: appearance ? 0xffffff : Number(isActive ? (item?.activeNumberColor ?? item?.numberColor ?? (getHudStoneSkinChrome(hud)?.parchment ?? HUD_TEXT_BRIGHT_COLOR)) : (item?.numberColor ?? (getHudStoneSkinChrome(hud)?.parchment ?? HUD_TEXT_DEFAULT_COLOR))) >>> 0,
           zLift: lift,
@@ -988,7 +987,7 @@ export function createHudWindowContentDispatchRuntime({
           pixel: t,
           text,
           x: ix,
-          y: startY + Math.round((slot - textH) / 2) - (dock ? 2 : 0),
+          y: (metric?.y ?? startY) + Math.round((slot - textH) / 2) - (dock ? 2 : 0),
           dot: textDot,
           color: dock?.actionInk ?? (appearance ? 0xffffff : Number(isActive ? (item?.activeTextColor ?? item?.textColor ?? HUD_TEXT_BRIGHT_COLOR) : (item?.textColor ?? HUD_TEXT_DEFAULT_COLOR)) >>> 0),
           fontWeight: dock ? "bold" : null,

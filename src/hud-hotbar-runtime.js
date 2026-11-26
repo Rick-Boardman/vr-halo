@@ -33,6 +33,9 @@ const HOTBAR_WINDOW_VERTICAL_PADDING_PX = 8;
 const HOTBAR_WINDOW_CHROME_VERTICAL_PADDING_PX = 10;
 const HOTBAR_SPACER_MIN_WIDTH_PX = 8;
 const HOTBAR_SPACER_GAP_PX = 4;
+// Below this a slot is too small to read or touch: a hotbar that cannot fit wraps onto further rows instead.
+const HOTBAR_MIN_TOUCH_SLOT_PX = 32;
+const HOTBAR_ROW_GAP_PX = 6;
 
 /**
  * Purpose: Create runtime hotbar helpers that encapsulate slot layout, hit-testing, and system-slot actions for the shared HUD.
@@ -190,29 +193,49 @@ export function createHudHotbarRuntime({
     return width;
   }
 
-  function buildSlotMetrics(startX, startY, slot, gap, items = getHotbarItems()) {
-    const metrics = new Array(slots);
-    let cursorX = startX;
+  /** Split the slots into rows no wider than `maxWidth` (one row when it fits or no limit is given). */
+  function packRows(slot, gap, items, maxWidth = Infinity) {
+    const rows = [];
+    let row = { start: 0, end: 0, width: 0 };
     for (let index = 0; index < slots; index += 1) {
       const width = getResolvedSlotWidth(items[index], slot);
-      metrics[index] = {
-        index,
-        x: cursorX,
-        y: startY,
-        w: width,
-        h: slot,
-      };
-      cursorX += width;
-      if (index < slots - 1) {
-        cursorX += getResolvedGapAfter(index, gap, items);
+      const gapBefore = index > row.start ? getResolvedGapAfter(index - 1, gap, items) : 0;
+      if (index > row.start && row.width + gapBefore + width > maxWidth) {
+        rows.push(row);
+        row = { start: index, end: index, width: 0 };
+        // A spacer never opens a row: it separates groups on one line.
+        if (items[index]?.spacer === true) { row.start = index + 1; row.end = index + 1; continue; }
       }
+      row.width += (index > row.start ? gapBefore : 0) + width;
+      row.end = index + 1;
+    }
+    rows.push(row);
+    return rows.filter(entry => entry.end > entry.start);
+  }
+
+  function buildSlotMetrics(win, layout, items = getHotbarItems()) {
+    const { slot, gap, rows, usableW, leftGutter, startY } = layout;
+    const metrics = new Array(slots);
+    rows.forEach((row, rowIndex) => {
+      let cursorX = win.x + leftGutter + Math.max(0, Math.floor((usableW - row.width) / 2));
+      const y = startY + rowIndex * (slot + HOTBAR_ROW_GAP_PX);
+      for (let index = row.start; index < row.end; index += 1) {
+        const width = getResolvedSlotWidth(items[index], slot);
+        metrics[index] = { index, x: cursorX, y, w: width, h: slot, row: rowIndex };
+        cursorX += width;
+        if (index < row.end - 1) cursorX += getResolvedGapAfter(index, gap, items);
+      }
+    });
+    // A spacer dropped at a row break still needs a (hidden, zero-width) place.
+    for (let index = 0; index < slots; index += 1) {
+      metrics[index] ??= { index, x: win.x + leftGutter, y: startY, w: 0, h: slot, row: 0 };
     }
     return metrics;
   }
 
-  function getHotbarSlotLayout(win) {
+  /** Slot size, gutters and rows for a hotbar `width` wide: shrink toward a touchable size, then wrap. */
+  function measureStrip(width) {
     const pad = HUD_OVERLAY_PADDING_PX;
-    const titleH = 0;
     let slot = defaultSlotSize;
     let gap = HUD_HOTBAR_SLOT_GAP_PX;
     const items = getHotbarItems();
@@ -222,60 +245,56 @@ export function createHudHotbarRuntime({
     let rightGutter = chrome ? getPreferredRightGutterPx(pad) : pad;
     const minLeftGutter = chrome ? getCompactLeftGutterPx(pad) : pad;
     const minRightGutter = chrome ? getCompactRightGutterPx(pad) : pad;
+    const minSlot = Math.min(defaultSlotSize, HOTBAR_MIN_TOUCH_SLOT_PX);
 
-    let usableW = Math.max(slot, win.w - leftGutter - rightGutter);
+    let usableW = Math.max(slot, width - leftGutter - rightGutter);
     if (chrome && usableW < stripW) {
       const overflow = stripW - usableW;
       const shrinkRight = Math.min(rightGutter - minRightGutter, Math.ceil(overflow * 0.6));
       rightGutter -= Math.max(0, shrinkRight);
-      usableW = Math.max(slot, win.w - leftGutter - rightGutter);
+      usableW = Math.max(slot, width - leftGutter - rightGutter);
 
       const remainingOverflow = stripW - usableW;
       const shrinkLeft = Math.min(leftGutter - minLeftGutter, Math.max(0, remainingOverflow));
       leftGutter -= Math.max(0, shrinkLeft);
-      usableW = Math.max(slot, win.w - leftGutter - rightGutter);
+      usableW = Math.max(slot, width - leftGutter - rightGutter);
     }
 
     if (usableW < stripW) {
       const minGap = slots > 1 ? 4 : 0;
       const compactSlot = Math.floor((usableW - Math.max(0, slots - 1) * minGap) / Math.max(1, slots));
-      slot = Math.max(20, Math.min(defaultSlotSize, compactSlot));
-      gap = slots > 1
-        ? Math.max(3, Math.floor((usableW - slots * slot) / Math.max(1, slots - 1)))
-        : 0;
+      slot = Math.max(minSlot, Math.min(defaultSlotSize, compactSlot));
+      gap = slots > 1 ? Math.max(4, Math.min(HUD_HOTBAR_SLOT_GAP_PX, Math.floor((usableW - slots * slot) / Math.max(1, slots - 1)))) : 0;
       stripW = getStripWidth(slot, gap, items);
     }
 
-    if (chrome && usableW < stripW) {
-      leftGutter = pad;
-      rightGutter = pad;
-      usableW = Math.max(slot, win.w - leftGutter - rightGutter);
-      const minGap = slots > 1 ? 2 : 0;
-      const compactSlot = Math.floor((usableW - Math.max(0, slots - 1) * minGap) / Math.max(1, slots));
-      slot = Math.max(20, Math.min(slot, compactSlot));
-      gap = slots > 1
-        ? Math.max(2, Math.floor((usableW - slots * slot) / Math.max(1, slots - 1)))
-        : 0;
-      stripW = getStripWidth(slot, gap, items);
-    }
+    const rows = packRows(slot, gap, items, usableW);
+    stripW = Math.max(...rows.map(row => row.width), 0);
+    const stripH = rows.length * slot + Math.max(0, rows.length - 1) * HOTBAR_ROW_GAP_PX;
+    return { pad, slot, gap, rows, stripW, stripH, usableW, leftGutter, rightGutter, chrome, items };
+  }
 
-    usableW = Math.max(slot, win.w - leftGutter - rightGutter);
-    const startX = win.x + leftGutter + Math.max(0, Math.floor((usableW - stripW) / 2));
-    const startY = win.y + Math.max(0, Math.floor((win.h - slot) / 2));
-    const slotMetrics = buildSlotMetrics(startX, startY, slot, gap, items);
+  function getHotbarSlotLayout(win) {
+    const measured = measureStrip(Number(win.w) || 0);
+    const startY = win.y + Math.max(0, Math.floor((win.h - measured.stripH) / 2));
+    const startX = win.x + measured.leftGutter + Math.max(0, Math.floor((measured.usableW - measured.stripW) / 2));
+    const layout = { ...measured, startY, startX };
+    const slotMetrics = buildSlotMetrics(win, layout, measured.items);
     return {
-      pad,
-      titleH,
-      slot,
-      gap,
+      pad: measured.pad,
+      titleH: 0,
+      slot: measured.slot,
+      gap: measured.gap,
       slots,
-      stripW,
+      stripW: measured.stripW,
+      stripH: measured.stripH,
+      rows: measured.rows.length,
       startX,
       startY,
       slotMetrics,
-      leftGutter,
-      rightGutter,
-      chrome,
+      leftGutter: measured.leftGutter,
+      rightGutter: measured.rightGutter,
+      chrome: measured.chrome,
     };
   }
 
@@ -291,8 +310,15 @@ export function createHudHotbarRuntime({
     const verticalPad = chrome
       ? HOTBAR_WINDOW_CHROME_VERTICAL_PADDING_PX
       : HOTBAR_WINDOW_VERTICAL_PADDING_PX;
-    const width = Math.round(Math.max(stripW + leftGutter + rightGutter, stripW + pad * 2));
-    const height = Math.round(slot + verticalPad * 2);
+    let width = Math.round(Math.max(stripW + leftGutter + rightGutter, stripW + pad * 2));
+    let height = Math.round(slot + verticalPad * 2);
+    // On a narrow screen the bar takes the width there is and grows rows rather than shrinking past touch size.
+    const layoutW = Number(hud?.layoutW);
+    const available = Number.isFinite(layoutW) && layoutW > 0 ? Math.floor(layoutW - pad * 2) : Infinity;
+    if (width > available) {
+      width = Math.max(defaultSlotSize + pad * 2, available);
+      height = Math.round(measureStrip(width).stripH + verticalPad * 2);
+    }
     return {
       w: width,
       h: height,
@@ -368,19 +394,7 @@ export function createHudHotbarRuntime({
 
   function hitTestHotbarSlotIndex(win, px, py) {
     if (!win || win.collapsed) return -1;
-    const { slot, startX, startY, stripW, slotMetrics } = getHotbarSlotLayout(win);
-    if (
-      !rectContains(
-        startX,
-        startY,
-        stripW,
-        slot,
-        px,
-        py
-      )
-    ) {
-      return -1;
-    }
+    const { slotMetrics } = getHotbarSlotLayout(win);
     for (let index = 0; index < slotMetrics.length; index += 1) {
       const metric = slotMetrics[index];
       if (!metric) continue;
