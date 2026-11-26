@@ -70,6 +70,10 @@ world point, so a test can also aim at scene objects. This is not a physical hea
 picking, input and layout, not optics, tracking, comfort or performance. `npm run test:browser` runs it on the
 chat-panel example (`scripts/look-at-emulated-headset.mjs`).
 
+`@rb/halo/testing/hud-pointing.mjs` finds what a person points at, from Halo's own row metrics and slot meshes:
+`hudRowPoint` (a window row by its label), `hotbarSlotPoint` (a slot by its tooltip, with client and world
+points), `hudToClient`, `hudWindow`, `shownHudWindows`, and `frames` (wait for rendered frames, not a fixed sleep).
+
 ## Develop and contribute
 
 ```sh
