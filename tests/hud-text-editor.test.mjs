@@ -114,6 +114,28 @@ test("a click in the footer field keeps every typed character", () => {
   }
 });
 
+test("a press on a window drawn over the editor does not focus the editor", () => {
+  const env = harness();
+  const ui = env.hudSystem.hud.ui;
+  ui.windows.palette = { x: 0, y: 30, w: 200, h: 100, collapsed: false };
+  ui.order = ["chat", "palette"];
+  ui.focus = "palette";
+  const fronted = [];
+  env.hudSystem.bringToFront = (k) => fronted.push(k);
+  const editor = createHudTextEditor({ renderer: env.renderer, hudSystem: env.hudSystem, windowKey: "chat" });
+  try {
+    env.clickLine();
+    key("a");
+    assert.equal(editor.getText(), "", "the covered editor took no typing");
+    assert.deepEqual(fronted, [], "the covered editor did not lift itself over the palette");
+    env.clickAt(300, 50);
+    key("b");
+    assert.equal(editor.getText(), "b", "a press on the uncovered part still focuses it");
+  } finally {
+    editor.dispose();
+  }
+});
+
 test("a click in the window field keeps every typed character", () => {
   const env = harness();
   const editor = createHudTextEditor({

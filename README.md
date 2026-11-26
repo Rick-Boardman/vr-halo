@@ -66,7 +66,8 @@ await exitVr(page, "window.myApp.ctx");
 ```
 
 The second argument is a page expression yielding the app's `{ renderer, hudSystem }`. `aimController` takes any
-world point, so a test can also aim at scene objects. This is not a physical headset: it proves session entry, ray
+world point, so a test can also aim at scene objects; `clearShot` picks a point on one that no other candidate covers
+along the controller's ray. This is not a physical headset: it proves session entry, ray
 picking, input and layout, not optics, tracking, comfort or performance. `npm run test:browser` runs it on the
 chat-panel example (`scripts/look-at-emulated-headset.mjs`).
 

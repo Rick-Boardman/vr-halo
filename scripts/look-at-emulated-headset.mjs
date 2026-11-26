@@ -5,7 +5,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installEmulatedHeadset, enterVr, exitVr, hudWindowPoint, aimController, pullTrigger } from '../testing/emulated-headset.mjs';
+import { installEmulatedHeadset, enterVr, exitVr, hudWindowPoint, aimController, pullTrigger, clearShot } from '../testing/emulated-headset.mjs';
 import { frames, hudWindow, shownHudWindows, hudToClient, hudRowPoint, hotbarSlotPoint } from '../testing/hud-pointing.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -81,6 +81,10 @@ try {
     const front = await page.evaluate(() => globalThis.__haloChatExample.hudSystem.hud.ui.order.at(-1));
     step(`the trigger on ${key} brings it to the front`, front === key, `front ${front}`);
   }
+
+  const helpPoint = await hudWindowPoint(page, runtime, 'help', { v: 0.6 });
+  const shot = await clearShot(page, runtime, [{ id: 'help', world: [helpPoint.x, helpPoint.y, helpPoint.z] }], { idKey: 'windowKey' });
+  step('clearShot finds an uncovered point on a HUD window', shot?.id === 'help', JSON.stringify(shot));
 
   await exitVr(page, runtime);
   const after = await page.evaluate(() => {
