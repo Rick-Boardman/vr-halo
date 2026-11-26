@@ -160,3 +160,25 @@ test("volume and mute keep the stored level", () => {
   assert.equal(heard.at(-1).volume, 0.4);
   quality.dispose();
 });
+
+test("calibration pauses in a headset and warms up again afterwards", () => {
+  const applied = [];
+  const storage = memoryStorage();
+  const renderer = { xr: { isPresenting: false }, setPixelRatio(value) { applied.push(value); } };
+  const quality = createQualityCalibration({ devicePixelRatio: 2, cap: 2, storage, sampleSeconds: 0.5, warmupSeconds: 0.2, targetFps: 50, renderer });
+  quality.start();
+  quality.tick(0.2);
+  assert.equal(quality.phase, "sample");
+  renderer.xr.isPresenting = true;
+  const before = applied.length;
+  // Headset frames, slow or fast, neither fail nor raise a tier, and the pixel ratio is left alone.
+  for (let i = 0; i < 120; i += 1) quality.tick(i % 2 ? 1 / 90 : 0.4);
+  assert.equal(quality.pixelRatio, 0.5);
+  assert.equal(applied.length, before);
+  assert.equal(JSON.parse(storage.raw.get("halo.graphics.v1")).ceiling ?? null, null);
+  renderer.xr.isPresenting = false;
+  quality.tick(1 / 60);
+  assert.equal(quality.phase, "warmup", "the first desktop frames after the session are not judged");
+  assert.equal(applied.at(-1), 0.5, "the desktop tier is applied again");
+  quality.dispose();
+});

@@ -1,6 +1,6 @@
 {
   "name": "@rb/halo",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Browser-native Three.js and WebXR runtime with scene, navigation, input, and WebGL HUD primitives.",
   "private": true,
   "type": "module",
@@ -18,10 +18,12 @@
     "./curve-surface": "./src/curve-surface.js",
     "./xr": "./src/xr/index.js",
     "./package.json": "./package.json",
-    "./src/*": "./src/*"
+    "./src/*": "./src/*",
+    "./testing/*": "./testing/*"
   },
   "files": [
     "src",
+    "testing",
     "docs",
     "examples",
     "README.md",
@@ -41,6 +43,7 @@
     "troika-three-text": "^0.52.4"
   },
   "devDependencies": {
+    "iwer": "2.8.0",
     "playwright": "1.65.1",
     "three": "0.185.1",
     "troika-three-text": "0.52.4"
@@ -55,7 +58,7 @@
     "build": "npm run check && npm run check:exports && npm test",
     "pack:deliverable": "node scripts/pack-deliverable.mjs",
     "start": "node scripts/serve.mjs",
-    "test:browser": "node scripts/look-at-chat-panel.mjs && node scripts/look-at-settings-window.mjs && node scripts/look-at-path-camera.mjs",
+    "test:browser": "node scripts/look-at-chat-panel.mjs && node scripts/look-at-settings-window.mjs && node scripts/look-at-path-camera.mjs && node scripts/look-at-emulated-headset.mjs",
     "gate": "node scripts/consumer-gate.mjs",
     "audit:release": "node scripts/audit-release.mjs"
   },

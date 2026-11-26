@@ -49,6 +49,27 @@ import map; bundlers resolve package imports normally. Keep one Three.js instanc
 The package entry point is `@rb/halo`; narrow exports include `/navigation`,
 `/tiles`, `/ui`, `/ui/editor`, `/xr`, `/input`, and `/curve-surface`.
 
+## Test in an emulated headset
+
+`@rb/halo/testing/emulated-headset.mjs` drives a Halo app in a Playwright browser with a real WebXR runtime:
+Meta's [Immersive Web Emulator](https://github.com/meta-quest/immersive-web-emulator) (IWER, MIT). Add `iwer`
+as a devDependency of the app, then:
+
+```js
+import { installEmulatedHeadset, enterVr, exitVr, hudWindowPoint, aimController, pullTrigger } from "@rb/halo/testing/emulated-headset.mjs";
+
+await installEmulatedHeadset(context);              // a Meta Quest 3 in every page, before its scripts run
+await enterVr(page, "window.myApp.ctx");            // the HUD's own Enter VR click; a real immersive-vr session
+await aimController(page, "window.myApp.ctx", await hudWindowPoint(page, "window.myApp.ctx", "palette"));
+await pullTrigger(page);                            // a WebXR select through the app's own input path
+await exitVr(page, "window.myApp.ctx");
+```
+
+The second argument is a page expression yielding the app's `{ renderer, hudSystem }`. `aimController` takes any
+world point, so a test can also aim at scene objects. This is not a physical headset: it proves session entry, ray
+picking, input and layout, not optics, tracking, comfort or performance. `npm run test:browser` runs it on the
+chat-panel example (`scripts/look-at-emulated-headset.mjs`).
+
 ## Develop and contribute
 
 ```sh

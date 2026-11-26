@@ -106,7 +106,13 @@ const state = (page) => page.evaluate(() => {
     open: globalThis.__haloSettingsWindow.form.openKey,
   };
 });
-const frames = (page) => page.waitForTimeout(150);
+// Real rendered frames, not a fixed sleep: the HUD acts on a click in a later frame, and a slow CI runner (software
+// GL) can render fewer frames in 150 ms than a desktop. That fixed sleep failed one CI run at the ratio field.
+const frames = (page, count = 6) => page.evaluate((n) => new Promise((done) => {
+  let left = n;
+  const tick = () => (--left > 0 ? requestAnimationFrame(tick) : done());
+  requestAnimationFrame(tick);
+}), count);
 const thrown = (errors) => errors.filter((line) => !/Failed to load resource/i.test(line));
 
 try {
