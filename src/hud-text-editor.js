@@ -974,10 +974,35 @@ export function createHudTextEditor({
     return { x: col, y: 0 };
   }
 
+  /**
+   * Whether this editor's window is the one drawn at a HUD point, in Halo's draw order: the focused, dragged or
+   * resized window in front, then the window order from the top. A press on a window drawn over the editor belongs to
+   * that window; the editor used to take focus from it and lift itself over it (2026-11-26: a phone palette over
+   * Insight's Mermaid source could not be tapped).
+   */
+  function isEditorWindowTopmostAt(px, py) {
+    const ui = hudSystem?.hud?.ui;
+    const windows = ui?.windows ?? {};
+    const order = Array.isArray(ui?.order) ? ui.order : Object.keys(windows);
+    const front = Object.keys(windows).filter((k) => windows[k]?.dragging || windows[k]?.resizing);
+    const keys = [...front, ui?.focus, ...[...order].reverse()];
+    const seen = new Set();
+    for (const k of keys) {
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      const w = windows[k];
+      if (!w || w.hidden || Number(w.y) < -1000) continue;
+      const h = w.collapsed ? HUD_WINDOW_TITLE_HEIGHT_PX : w.h;
+      if (px >= w.x && px <= w.x + w.w && py >= w.y && py <= w.y + h) return k === key;
+    }
+    return true;
+  }
+
   function isPointInsideEditorContent(px, py) {
     const hud = hudSystem?.hud;
     const w = hud?.ui?.windows?.[key];
     if (!w) return false;
+    if (!isEditorWindowTopmostAt(px, py)) return false;
     const titleH = HUD_WINDOW_TITLE_HEIGHT_PX;
     const h = w.collapsed ? titleH : w.h;
     const footerReserve = Math.max(0, Number(w._footerReservedHeightPx) || 0);
@@ -993,6 +1018,7 @@ export function createHudTextEditor({
     const hud = hudSystem?.hud;
     const w = hud?.ui?.windows?.[key];
     if (!w) return false;
+    if (!isEditorWindowTopmostAt(px, py)) return false;
     const h = w.collapsed ? HUD_WINDOW_TITLE_HEIGHT_PX : w.h;
     if (px < w.x || px > w.x + w.w) return false;
     if (py < w.y || py > w.y + h) return false;
