@@ -1106,7 +1106,9 @@ export function createHudPropertySheet(options) {
           : "[edit]"
         : "";
       const prefixText = prefix ? `${prefix} ` : "";
-      const text = valueText ? `${prefixText}${label}: ${valueText}` : `${prefixText}${label}`;
+      // A row without a label (a note, an issue under a field) shows only its value, not ": value".
+      const hasLabel = String(label ?? "").trim().length > 0;
+      const text = valueText ? (hasLabel ? `${prefixText}${label}: ${valueText}` : `${prefixText}${valueText}`) : `${prefixText}${label}`;
       const entry = {
         text,
         color: row.color ?? (isRowEditable(row) ? HUD_TEXT_DEFAULT_COLOR : HUD_TEXT_MUTED_COLOR),
