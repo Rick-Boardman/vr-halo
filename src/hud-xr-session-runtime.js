@@ -25,6 +25,17 @@ import { HUD_TEXT_INFO_COLOR } from "./hud-text-style.js";
  * Side effects: queries `navigator.xr`, mutates `hud.xr.*` and `hud.ui.*` state,
  *   calls `renderer.xr.setSession()`, registers XR session event listeners.
  */
+/**
+ * WebXR support is known only after an async check. When Halo made the current layout, it is made again (Enter VR may
+ * now take room). When the host laid the windows out itself (Lattice's graph HUD, an app's desktop layout), only the
+ * Enter VR window is placed, so the host's layout is not overwritten.
+ */
+function requestXrSupportLayoutFor(hud) {
+  if (!hud?.ui) return;
+  if (!hud.ui._layoutInitialized || hud.ui._layoutByHalo) hud.ui._layoutInitialized = false;
+  else hud.ui._xrPlacementPending = true;
+}
+
 export function createHudXrSessionRuntime({
   hud,
   renderer,
@@ -41,6 +52,8 @@ export function createHudXrSessionRuntime({
 } = {}) {
   let xrSession = null;
 
+  const requestXrSupportLayout = () => requestXrSupportLayoutFor(hud);
+
   async function updateXRSupport() {
     if (!("xr" in navigator)) {
       hud.xr.supported = false;
@@ -54,7 +67,7 @@ export function createHudXrSessionRuntime({
         }
       }
       try {
-        if (hud.ui) hud.ui._layoutInitialized = false;
+        requestXrSupportLayout();
       } catch {
         // no-op
       }
@@ -69,7 +82,7 @@ export function createHudXrSessionRuntime({
         : "WebXR immersive-vr not supported.";
 
       try {
-        if (hud.ui) hud.ui._layoutInitialized = false;
+        requestXrSupportLayout();
       } catch {
         // no-op
       }
@@ -95,7 +108,7 @@ export function createHudXrSessionRuntime({
         }
       }
       try {
-        if (hud.ui) hud.ui._layoutInitialized = false;
+        requestXrSupportLayout();
       } catch {
         // no-op
       }

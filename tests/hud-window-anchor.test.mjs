@@ -124,3 +124,36 @@ test("a hidden window keeps its place too, and the first layout is left to run",
   assert.equal(win._hiddenX, before, "before the first layout there is nothing to keep");
   assert.equal(hud.ui._layoutInitialized, false);
 });
+
+test("a window wider than a phone is narrowed to it, kept in view, and widened again later", () => {
+  const { hud, to } = setUp({ source: { x: 432, y: 271, w: 476, h: 378, minW: 300, minH: 120 } }, 1400, 900);
+  hud.ui.windowClampMode = "none";
+  const win = hud.ui.windows.source;
+  to(430, 900);
+  assert.equal(win.w, 398, "430px viewer less two 16px margins");
+  assert.ok(win.x >= 16 && win.x + win.w <= 414, `in view at ${win.x}`);
+  to(1400, 900);
+  assert.equal(win.w, 476, "its own width back");
+});
+
+test("a bottom hotbar keeps its bottom gap and its centre when the viewer shrinks and grows", () => {
+  const { hud, to } = setUp({ hotbar: { x: 258, y: 824, w: 884, h: 56, minW: 200, minH: 40 } }, 1400, 900);
+  const win = hud.ui.windows.hotbar;
+  to(430, 900);
+  to(1400, 900);
+  assert.equal(win.x + win.w / 2, 700, "centred");
+  assert.equal(900 - win.y - win.h, 20, "same gap to the bottom");
+});
+
+test("the WebXR support check places Enter VR but keeps a layout the host made", () => {
+  // Chorus and Helix: Lattice lays out SYSTEM LOG, DEBUG and TARGET; the async support check used to clear the layout
+  // flag and Halo's default layout then piled them on one row.
+  const chat = { x: 16, y: 96, w: 398, h: 270, minW: 100, minH: 40 };
+  const xr = { x: 1000, y: -2000, w: 240, h: 64, minW: 200, minH: 64, _hiddenX: 174, _hiddenY: 16 };
+  const hud = { layoutW: 430, layoutH: 900, xr: { supported: true }, ui: { windows: { chat, xr }, order: ["xr", "chat"], _layoutInitialized: true, _xrPlacementPending: true, data: {} } };
+  const layout = createHudWindowLayoutRuntime({ hud, renderer: { xr: { isPresenting: false } }, clamp, titleHeightPx: 28, rightX: 0, hiddenY: -2000, windowClampMinVisiblePxDefault: 32 });
+  layout.ensureDefaultLayout();
+  assert.deepEqual([chat.x, chat.y, chat.w], [16, 96, 398], "the host's SYSTEM LOG is where the host put it");
+  assert.deepEqual([xr.x, xr.y], [174, 16], "Enter VR is back on screen");
+  assert.equal(hud.ui._xrPlacementPending, false);
+});

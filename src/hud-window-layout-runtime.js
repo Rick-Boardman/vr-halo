@@ -25,7 +25,30 @@ export function createHudWindowLayoutRuntime({
   hiddenY,
   windowClampMinVisiblePxDefault,
   loadLayout,
+  syncHotbarWindowSize = null,
 } = {}) {
+  /**
+   * A window wider than the viewer (a 420px panel on a 430px phone) is narrowed to the viewer, keeping its width to
+   * restore when the viewer grows again. The hotbar sizes itself (hud-hotbar-runtime.js).
+   */
+  const HOTBAR_DOCK_MAX_GAP_PX = 64;
+
+  function fitWindowWidth(key, win) {
+    if (key === "hotbar") return;
+    const available = Math.floor(Number(hud.layoutW) - 2 * HUD_WINDOW_EDGE_MARGIN_PX);
+    if (!(available > 0)) return;
+    const width = Number(win.w);
+    if (Number.isFinite(win._fitFromW) && win._fitFromW > width && available > width) {
+      win.w = Math.min(win._fitFromW, available);
+      if (win.w >= win._fitFromW) delete win._fitFromW;
+      return;
+    }
+    if (width > available) {
+      if (!Number.isFinite(win._fitFromW)) win._fitFromW = width;
+      win.w = available;
+    }
+  }
+
   function clampWindowToBounds(key, win) {
     if (renderer.xr.isPresenting) return;
     if (Number(win?.y) < -1000) return;
@@ -41,6 +64,7 @@ export function createHudWindowLayoutRuntime({
     );
 
     if (mode === "none") return;
+    fitWindowWidth(key, win);
 
     if (mode === "titlebar") {
       const minX = clamp(minVisible, 8, Math.max(8, win.w));
@@ -86,7 +110,10 @@ export function createHudWindowLayoutRuntime({
   }
 
   function ensureDefaultLayout() {
-    if (hud.ui._layoutInitialized) return;
+    if (hud.ui._layoutInitialized) {
+      if (hud.ui._xrPlacementPending) placeXrForSupport();
+      return;
+    }
 
     const windows = hud.ui?.windows;
     const order = hud.ui?.order;
@@ -117,6 +144,7 @@ export function createHudWindowLayoutRuntime({
         if (win) clampWindowToBounds(key, win);
       }
       hud.ui._layoutInitialized = true;
+      hud.ui._layoutByHalo = true;
       return;
     }
 
@@ -278,6 +306,16 @@ export function createHudWindowLayoutRuntime({
       if (win) clampWindowToBounds(key, win);
     }
     hud.ui._layoutInitialized = true;
+    hud.ui._layoutByHalo = true;
+  }
+
+  /** The host owns the layout: once WebXR support is known, only Enter VR is parked or brought back. */
+  function placeXrForSupport() {
+    hud.ui._xrPlacementPending = false;
+    const xrWin = hud.ui?.windows?.xr;
+    if (!xrWin || renderer.xr.isPresenting) return;
+    if (!parkXrUntilSupported(xrWin) && hud.xr.supported && Number(xrWin.y) < -1000) restoreParkedXr(xrWin);
+    clampWindowToBounds("xr", xrWin);
   }
 
   /**
@@ -295,8 +333,18 @@ export function createHudWindowLayoutRuntime({
       if (!win) continue;
       const hidden = Number(win.y) < -1000;
       if (hidden && !(Number.isFinite(win._hiddenX) && Number.isFinite(win._hiddenY))) continue;
+      let dock = null;
       if (key === "hotbar" && !hidden && (hud.ui?.data?.hotbarPlacement ?? "bottom") === "bottom") {
+        // Keep the bar's gap to the bottom edge, and keep it centred if it was centred.
+        // A bar a person dragged elsewhere is anchored like any window.
+        const previousCentre = Number(win.x) + Number(win.w) / 2;
+        const gap = previousH - Number(win.y) - Number(win.h);
+        if (gap >= 0 && gap <= HOTBAR_DOCK_MAX_GAP_PX) {
+          dock = { gap, centred: Math.abs(previousCentre - previousW / 2) <= 2 };
+        }
         const maxW = Math.max(280, W - 2 * HUD_WINDOW_EDGE_MARGIN_PX);
+        // The hotbar's own size for this width: narrower and taller (wrapped rows) on a phone, one row when wide.
+        if (typeof syncHotbarWindowSize === "function") syncHotbarWindowSize();
         win.minW = Math.min(win.minW || maxW, maxW);
         win.w = Math.min(win.w, maxW);
       }
@@ -316,6 +364,16 @@ export function createHudWindowLayoutRuntime({
         win.x = nextX;
         win.y = nextY;
         clampWindowToBounds(key, win);
+        // A resize is not the user's drag: whatever the clamp mode allows, fit the window to the viewer and keep it
+        // wholly in view.
+        fitWindowWidth(key, win);
+        const edge = Number(win.w) + 2 * HUD_WINDOW_EDGE_MARGIN_PX <= W ? HUD_WINDOW_EDGE_MARGIN_PX : 0;
+        if (Number(win.w) <= W) win.x = clamp(Number(win.x), edge, W - Number(win.w) - edge);
+        if (height <= H) win.y = clamp(Number(win.y), 0, H - height);
+        if (dock) {
+          if (dock.centred) win.x = Math.max(0, Math.round((W - Number(win.w)) / 2));
+          win.y = Math.max(0, Math.round(H - Number(win.h) - dock.gap));
+        }
         win._viewerAnchor = { x: anchorX, y: anchorY, atX: Number(win.x), atY: Number(win.y) };
       }
     }

@@ -1206,6 +1206,7 @@ export function createHudSystem(
     hiddenY: HUD_WINDOW_HIDDEN_Y_PX,
     windowClampMinVisiblePxDefault: HUD_WINDOW_CLAMP_MIN_VISIBLE_PX,
     loadLayout: () => _panelStorage.loadLayout(),
+    syncHotbarWindowSize: () => syncHotbarWindowSize(),
   });
 
   const _windowObjectVisibilityRuntime = createHudWindowObjectVisibilityRuntime({ hud });
