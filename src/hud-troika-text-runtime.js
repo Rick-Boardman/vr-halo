@@ -42,7 +42,10 @@ import {
   HUD_TEXT_SDF_GLYPH_SIZE,
   HUD_TEXT_UNICODE_FONTS_URL,
 } from "./hud-text-style.js";
-import { estimateHudGlyphAdvancePx, HUD_TEXT_ESTIMATE_GAP_PX } from "./text-measurement.js";
+import { estimateTextWidthPx, HUD_TEXT_ESTIMATE_GAP_PX } from "./text-measurement.js";
+
+// The HUD font runs a little wider than the per-glyph estimate; truncation keeps this margin.
+const HUD_TRUNCATION_FONT_MARGIN = 1.12;
 import {
   HUD_TEXT_ASCENDER_NUDGE_FACTOR,
   HUD_WINDOW_TITLE_HEIGHT_PX,
@@ -1154,11 +1157,15 @@ export function createHudTroikaTextRuntime({
       let finalText = normalizedText;
       const mw = maxWidth != null ? Number(maxWidth) : null;
       if (truncateSingleLine && !isMultiline && mw != null && Number.isFinite(mw)) {
-        const perChar = estimateHudGlyphAdvancePx(dot, gap);
-        const maxChars = Math.max(0, Math.floor((mw + gap) / Math.max(1, perChar)));
-        if (finalText.length > maxChars) finalText = ellipsis && maxChars > 1
-          ? finalText.slice(0, maxChars - 1).trimEnd() + "…"
-          : finalText.slice(0, maxChars);
+        // Cut only text that does not fit: measure glyph by glyph (narrow letters are narrow) with a margin for the
+        // rendered font, instead of charging every character the widest advance.
+        const fits = value => estimateTextWidthPx(value, dot, gap) * HUD_TRUNCATION_FONT_MARGIN <= mw;
+        if (!fits(finalText)) {
+          let end = finalText.length;
+          const cut = n => (ellipsis && n > 1 ? `${finalText.slice(0, n - 1).trimEnd()}…` : finalText.slice(0, n));
+          while (end > 0 && !fits(cut(end))) end -= 1;
+          finalText = cut(end);
+        }
       }
       if (this._inkCenter && Number.isFinite(this._inkCenter.x)) this._textMesh.scale.x = 1;
       this._inkCenter = finalText && (Number.isFinite(inkCenterX) || Number.isFinite(inkCenterY))
