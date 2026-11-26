@@ -6,6 +6,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installEmulatedHeadset, enterVr, exitVr, hudWindowPoint, aimController, pullTrigger } from '../testing/emulated-headset.mjs';
+import { frames, hudWindow, shownHudWindows, hudToClient, hudRowPoint, hotbarSlotPoint } from '../testing/hud-pointing.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png' };
@@ -46,6 +47,20 @@ const runtime = 'globalThis.__haloChatExample';
 try {
   await page.goto(`${origin}/examples/chat-panel/`);
   await page.waitForFunction(() => globalThis.__haloChatExample?.hudSystem, null, { timeout: 30000 });
+  await frames(page, 10);
+
+  // Desktop pointing helpers: a row and a hotbar slot land on Halo's own UI hit test.
+  const overUi = (p) => page.evaluate(({ x, y }) => globalThis.__haloChatExample.hudSystem.isClientPointOverUi(x, y), p);
+  const row = await hudRowPoint(page, runtime, 'help', /roll/i);
+  step('hudRowPoint finds a help row by its text', row.found, row.found ? row.text : JSON.stringify(row.rows));
+  const rowClient = await hudToClient(page, runtime, row);
+  const helpWin = await hudWindow(page, runtime, 'help');
+  step('the row point is inside its window and over the UI', row.y > helpWin.y && row.y < helpWin.y + helpWin.h && await overUi(rowClient), JSON.stringify(rowClient));
+  const slot = await hotbarSlotPoint(page, runtime, /\S/);
+  step('hotbarSlotPoint finds a slot over the hotbar', !!slot && await overUi(slot), JSON.stringify(slot && { index: slot.index, x: Math.round(slot.x), y: Math.round(slot.y) }));
+  const shown = await shownHudWindows(page, runtime);
+  step('shownHudWindows lists the open windows', shown.windows.some((w) => w.key === 'help'), shown.windows.map((w) => w.key).join(', '));
+
   await enterVr(page, runtime);
   const presenting = await page.evaluate(() => {
     const { renderer, hudSystem } = globalThis.__haloChatExample;
