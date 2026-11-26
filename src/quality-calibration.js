@@ -157,6 +157,8 @@ export function createQualityCalibration({
     refreshPanel();
   }
 
+  let presenting = false;
+
   function resetSample() {
     accum = 0;
     frames = 0;
@@ -359,6 +361,22 @@ export function createQualityCalibration({
 
   function tick(dt) {
     if (!started) return;
+    // In a headset the pixel ratio does nothing (three.js ignores it while presenting and the headset sets its own
+    // resolution), so its frames say nothing about a tier. Pause, and warm up again on return so the first desktop
+    // frames after the session are not judged.
+    if (renderer?.xr?.isPresenting) {
+      presenting = true;
+      return;
+    }
+    if (presenting) {
+      presenting = false;
+      if (phase !== "settled") {
+        phase = "warmup";
+        resetSample();
+      }
+      apply("resume");
+      return;
+    }
     const step = Number(dt);
     if (!Number.isFinite(step) || step <= 0 || phase === "settled") return;
     if (step * 1000 >= badFrameMs && phase !== "warmup") {
