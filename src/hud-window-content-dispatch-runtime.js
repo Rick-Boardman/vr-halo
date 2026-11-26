@@ -883,7 +883,10 @@ export function createHudWindowContentDispatchRuntime({
         const isActive = item?.active === true || i === activeIndex;
         const tooltipText = String(hotbarTooltips[i] ?? "").trim();
         const shouldHideFallbackNumber = !item && !tooltipText;
-        const numberText = item?.showNumber === false
+        // A docked tile has no corner to spare: a text label (HLP, DBG, an app's word) fills it, so its number would
+        // print over the label. Icon tiles and the classic hotbar keep their numbers unless the item hides them.
+        const dockTextLabel = !!dock && !!item && !item.iconTexture && !!(item.iconText || item.shortLabel);
+        const numberText = item?.showNumber === false || dockTextLabel
           ? ""
           : (typeof item?.numberText === "string" ? item.numberText : (shouldHideFallbackNumber ? "" : nums[i]));
         const dx = sx + 4;
