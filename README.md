@@ -30,6 +30,9 @@ HTTPS outside localhost and a compatible browser/device.
 - Desktop, touch, flat/isometric, and immersive navigation primitives.
 - WebGL HUD windows, text, tooltips, skins, editors, form controls, a graphics and sound
   settings window, and application-fed chat panels.
+- Desktop window layout (`src/hud-desktop-layout.js`): the application gives each window's frame for a viewport;
+  Halo applies them, keeps windows a person moved or resized, fits every frame on screen, places the hotbar and
+  schedules layout and the hotbar's first appearance.
 - World-object selection, XR controllers, frame timing, and cleanup helpers.
 - Device input: keys, XR sticks and buttons, VR hands and phone tilt mapped to
   configurable axes and actions, with the motion-permission rules built in.
