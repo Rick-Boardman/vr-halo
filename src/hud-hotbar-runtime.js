@@ -3,6 +3,7 @@ import {
   HUD_HOTBAR_SLOT_GAP_PX,
   HUD_HOTBAR_SLOT_SIZE_PX,
   HUD_OVERLAY_PADDING_PX,
+  HUD_WINDOW_EDGE_MARGIN_PX,
 } from "./hud-layout-policy.js";
 import {
   HUD_HOTBAR_SLOT_COUNT,
@@ -36,6 +37,8 @@ const HOTBAR_SPACER_GAP_PX = 4;
 // Below this a slot is too small to read or touch: a hotbar that cannot fit wraps onto further rows instead.
 const HOTBAR_MIN_TOUCH_SLOT_PX = 32;
 const HOTBAR_ROW_GAP_PX = 6;
+// A wrapped bar keeps its drag grip and status but gives the title's width to the slots.
+const HOTBAR_WRAPPED_GRIP_GUTTER_PX = 26;
 
 /**
  * Purpose: Create runtime hotbar helpers that encapsulate slot layout, hit-testing, and system-slot actions for the shared HUD.
@@ -268,10 +271,17 @@ export function createHudHotbarRuntime({
       stripW = getStripWidth(slot, gap, items);
     }
 
-    const rows = packRows(slot, gap, items, usableW);
+    let rows = packRows(slot, gap, items, usableW);
+    const wrapped = rows.length > 1;
+    if (wrapped && chrome) {
+      leftGutter = HOTBAR_WRAPPED_GRIP_GUTTER_PX;
+      rightGutter = String(hud?.ui?.data?.hotbarStatusText ?? "").trim() ? minRightGutter : pad;
+      usableW = Math.max(slot, width - leftGutter - rightGutter);
+      rows = packRows(slot, gap, items, usableW);
+    }
     stripW = Math.max(...rows.map(row => row.width), 0);
     const stripH = rows.length * slot + Math.max(0, rows.length - 1) * HOTBAR_ROW_GAP_PX;
-    return { pad, slot, gap, rows, stripW, stripH, usableW, leftGutter, rightGutter, chrome, items };
+    return { pad, slot, gap, rows, stripW, stripH, usableW, leftGutter, rightGutter, chrome, items, wrapped };
   }
 
   function getHotbarSlotLayout(win) {
@@ -289,6 +299,7 @@ export function createHudHotbarRuntime({
       stripW: measured.stripW,
       stripH: measured.stripH,
       rows: measured.rows.length,
+      wrapped: measured.wrapped,
       startX,
       startY,
       slotMetrics,
@@ -314,7 +325,8 @@ export function createHudHotbarRuntime({
     let height = Math.round(slot + verticalPad * 2);
     // On a narrow screen the bar takes the width there is and grows rows rather than shrinking past touch size.
     const layoutW = Number(hud?.layoutW);
-    const available = Number.isFinite(layoutW) && layoutW > 0 ? Math.floor(layoutW - pad * 2) : Infinity;
+    // The width a bottom bar gets: the viewer less the window edge margins (as apps and Halo's resize lay it out).
+    const available = Number.isFinite(layoutW) && layoutW > 0 ? Math.floor(layoutW - HUD_WINDOW_EDGE_MARGIN_PX * 2) : Infinity;
     if (width > available) {
       width = Math.max(defaultSlotSize + pad * 2, available);
       height = Math.round(measureStrip(width).stripH + verticalPad * 2);

@@ -584,7 +584,7 @@ export function createHudWindowContentDispatchRuntime({
     clearPlainTextMaybeTroika(objs.titleText, labelDot);
     clearPlainTextMaybeTroika(objs.contentText, labelDot);
 
-    const { slot, slots, startX, startY, slotMetrics, leftGutter, rightGutter } = getHotbarSlotLayout(win);
+    const { slot, slots, startX, startY, slotMetrics, leftGutter, rightGutter, wrapped } = getHotbarSlotLayout(win);
     const hotbarItems = Array.isArray(hud.ui?.data?.hotbarItems)
       ? hud.ui.data.hotbarItems
       : [];
@@ -639,7 +639,8 @@ export function createHudWindowContentDispatchRuntime({
     if (titleText) {
       setPlainTextMaybeTroika({
         pixel: titleText,
-        text: compactTitle,
+        // A wrapped bar (a phone) has no room for a title; the grip and status remain.
+        text: wrapped ? "" : compactTitle,
         x: win.x + (dock ? (compactChrome && !canUseFullTitle ? 20 : 32) : (compactChrome && !canUseFullTitle ? HOTBAR_HEADER_COMPACT_TEXT_OFFSET_X_PX : HOTBAR_HEADER_TEXT_OFFSET_X_PX)),
         y: titleY,
         dot: titleDot,

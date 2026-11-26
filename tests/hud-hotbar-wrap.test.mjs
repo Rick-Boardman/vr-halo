@@ -34,3 +34,17 @@ test("a hotbar that fits stays one row at its full slot size", () => {
   assert.equal(layout.rows, 1);
   assert.equal(layout.slot, 40);
 });
+
+test("a wrapped bar with a title and status keeps every row inside its preferred height", () => {
+  const { hud, bar } = runtime(430, 21);
+  hud.ui.data.hotbarHeaderTitle = "Conduit";
+  hud.ui.data.hotbarStatusText = "READY";
+  const preferred = bar.getPreferredHotbarWindowSize();
+  assert.equal(preferred.w, 430 - 32, "the viewer less the window edge margins");
+  Object.assign(hud.ui.windows.hotbar, { x: 16, y: 900 - preferred.h - 20, w: preferred.w, h: preferred.h });
+  const win = hud.ui.windows.hotbar;
+  const layout = bar.getHotbarSlotLayout(win);
+  assert.equal(layout.wrapped, true);
+  assert.ok(layout.leftGutter < 40, "the title's width goes to the slots");
+  for (const metric of layout.slotMetrics) assert.ok(metric.y + metric.h <= win.y + win.h, `slot ${metric.index} inside the bar`);
+});
