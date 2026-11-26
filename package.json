@@ -41,9 +41,9 @@
     "troika-three-text": "^0.52.4"
   },
   "devDependencies": {
+    "playwright": "1.65.1",
     "three": "0.185.1",
-    "troika-three-text": "0.52.4",
-    "playwright": "1.62.1"
+    "troika-three-text": "0.52.4"
   },
   "engines": {
     "node": ">=24"
