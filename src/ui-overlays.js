@@ -45,6 +45,7 @@ import { getHudWindowControlRects } from "./hud-window-skin-runtime.js";
  * @param {(x: number, y: number) => number} options.hitTestHotbarSlotIndex Helper that resolves a hovered hotbar slot index for overlay hover text.
  * @param {(text: string) => Promise<boolean>} options.copyTextToClipboard Clipboard helper used by context-menu copy actions.
  * @param {(entries: any) => string} options.normalizeEntriesToText Helper that converts HUD line entries into copyable text.
+ * @param {(px: number, py: number) => boolean} [options.sceneLayerOwnsPoint] True where a raised scene layer is drawn over the windows at that HUD point; window hover (tooltips, resize cursor) stays off there.
  * @returns {{layoutTooltip: () => void, layoutContextMenu: () => void, updateOverlayHover: (dt: number) => void, handleContextMenuClick: (pointer: {x: number, y: number}) => Promise<boolean>, getContextTargetAt: (px: number, py: number) => {windowKey: string | null, lineText: string | null, holdEligible: boolean} | null, openContextMenuAtPointer: (pointer: {x: number, y: number}) => void, closeContextMenu: () => void, runContextMenuAction: (action: any) => Promise<void>}} Overlay controller with tooltip/context-menu layout hooks, hover updates, menu hit testing, menu opening and closing, and async menu action dispatch.
  * Side effects: allocates VR tooltip anchoring temporaries, mutates HUD overlay and window state, updates VR virtual-window placement, may copy text to the clipboard, may clear window lines or collapse windows through context-menu actions, and invokes `markDirty()` whenever overlay state changes require rerendering.
  */
@@ -79,6 +80,7 @@ export function createHudUiOverlays({
   copyTextToClipboard,
   normalizeEntriesToText,
   measureTooltipText = typeof document === "undefined" ? null : getTextRenderInfo,
+  sceneLayerOwnsPoint = () => false,
 } = {}) {
   const titleH = HUD_WINDOW_TITLE_HEIGHT_PX;
 
@@ -698,7 +700,8 @@ export function createHudUiOverlays({
 
     // Tooltip hover
     const tip = hud.overlay.tooltip;
-    if (!pointer.active) {
+    // A raised scene layer drawn over a window owns the pointer there, as it does for clicks.
+    if (!pointer.active || sceneLayerOwnsPoint(pointer.x, pointer.y)) {
       showResizeCursor(false);
       if (tip.visible || tip.text) {
         tip.visible = false;
