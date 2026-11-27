@@ -74,6 +74,7 @@ export function createHudFrameUpdateRuntime({
   windowObjectVisibilityRuntime,
   renderWindow,
   windowTextRenderOrderRuntime,
+  syncSceneLayers = null,
 }) {
   let _prevPresenting = !!renderer.xr.isPresenting;
 
@@ -137,6 +138,8 @@ export function createHudFrameUpdateRuntime({
     // Safety pass: keep every Troika text instance in sync with per-window stacking.
     // This prevents stale high renderOrder meshes from drawing above window backgrounds.
     windowTextRenderOrderRuntime.syncTroikaRegistryRenderOrders({ renderOrderBaseFor });
+    // Scene content in the window stack takes its render order from the windows below it.
+    syncSceneLayers?.(renderOrderBaseFor);
 
     // Do not mark dirty here; dirtiness should be driven by input/events.
   }

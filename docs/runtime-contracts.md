@@ -6,6 +6,14 @@ Applications provide world objects, domain interpretation, and service transport
 - Use `createSceneHudBootstrap` and `renderHudFrame` for normal integration.
 - Keep controllers parented to the scene rig and HUD anchored through Halo's APIs.
 - HUD input gets first refusal; world interaction must respect the UI hit test.
+- Scene content can take a place in the desktop window stack with
+  `hudSystem.raiseSceneLayer(key, { containsPoint, apply })` (a selected 3D card,
+  for example). It draws above the windows open when it was raised and below any
+  window opened, focused or brought forward afterwards; `apply` receives the HUD's
+  group order and a render order between those windows, or `null` when lowered
+  (`lowerSceneLayer`) and while presenting XR. Where `containsPoint` says it covers
+  a window below it, the UI hit test and desktop presses, wheel, double-click and
+  context menu leave that point to the scene.
 - Visible HUD text and controls render in WebGL. An invisible attached text input
   is used only as an input-method bridge where the immersive browser requires it.
 - Use a single application-provided Three.js instance. Do not import another copy
