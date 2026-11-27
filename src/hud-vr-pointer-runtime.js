@@ -36,6 +36,7 @@ import { createHudVrBasisScratch } from "./hud-vr-basis-runtime.js";
  * @param {object} deps.rayOrigin Shared scratch Vector3 for ray origin.
  * @param {object} deps.rayDir Shared scratch Vector3 for ray direction.
  * @param {object} deps.raycaster Shared THREE.Raycaster.
+ * @param {(origin: object, direction: object, hudDistance: number) => boolean} [deps.sceneIsNearerAlongRay] True when scene content is nearer along the ray than the panel it reaches; the ray then leaves the HUD to the scene.
  * @param {object} deps.vrHudPosW Shared scratch Vector3 for HUD world position.
  * @param {object} deps.vrHudQuatW Shared scratch Quaternion for HUD world orientation.
  * @param {object} deps.vrHudQuatWInv Shared scratch Quaternion (inverse HUD orientation).
@@ -125,6 +126,7 @@ export function createHudVrPointerRuntime({
   setVrMoveDragRayT,
   setVrMoveDragGrabU,
   setVrMoveDragGrabV,
+  sceneIsNearerAlongRay = () => false,
 }) {
   // ---- Private scratch vectors (used only by VR pointer picking) ----
   const _vrPlane = new THREE.Plane();
@@ -379,6 +381,10 @@ export function createHudVrPointerRuntime({
       // Non-dragging: raycast against colliders to prevent "ray goes through panel".
       const rc = hitByRaycastForController(controller, forcedKey);
       if (!rc) {
+        return null;
+      }
+      // Scene content in front of the panel (a card brought forward in the headset) takes the ray.
+      if (!forcedKey && sceneIsNearerAlongRay(rayOrigin, rayDir, rc.t)) {
         return null;
       }
       try {
