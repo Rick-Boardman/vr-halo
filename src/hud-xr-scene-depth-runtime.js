@@ -23,14 +23,15 @@ const XR_FOCUS_MIN_M = 0.75;
  * @param {{ xr?: { isPresenting?: boolean } }} deps.renderer Renderer whose XR presentation gates this runtime.
  * @param {number} deps.vrDistance Default HUD distance in meters (a window's distance is vrDistance - vrZ).
  * @param {number} [deps.vrDepthMinRadius] The nearest a window can be pushed, in meters.
+ * @param {() => ({ x: number, y: number, z: number } | null)} [deps.getHeadPosition] The viewer's head in world space.
  * @returns {{
  *   setXrSceneRayTest: (test: ((origin: object, direction: object) => number | null) | null) => void,
  *   sceneIsNearerAlongRay: (origin: object, direction: object, hudDistance: number) => boolean,
- *   getXrFocusDistance: (options?: { margin?: number, min?: number }) => number,
+ *   getXrFocusDistance: (options?: { from?: { x: number, y: number, z: number }, margin?: number, min?: number }) => number,
  *   syncHudDepth: () => void,
  * }}
  */
-export function createHudXrSceneDepthRuntime({ hud, renderer, vrDistance, vrDepthMinRadius } = {}) {
+export function createHudXrSceneDepthRuntime({ hud, renderer, vrDistance, vrDepthMinRadius, getHeadPosition = () => null } = {}) {
   const minRadius = Number.isFinite(Number(vrDepthMinRadius)) ? Number(vrDepthMinRadius) : HUD_VR_DEPTH_MIN_RADIUS_M;
   let sceneRayTest = null;
   let depthApplied = false;
@@ -53,16 +54,27 @@ export function createHudXrSceneDepthRuntime({ hud, renderer, vrDistance, vrDept
     return Number.isFinite(sceneDistance) && sceneDistance >= 0 && sceneDistance < hudDistance;
   }
 
-  /** A distance from the viewer, in meters, in front of every visible HUD panel. */
-  function getXrFocusDistance({ margin = XR_FOCUS_MARGIN_M, min = XR_FOCUS_MIN_M } = {}) {
-    let nearest = Number(vrDistance);
+  /**
+   * A distance, in meters, from `from` (default: the viewer's head) that is in front of every shown HUD panel.
+   * Panels are measured where they are drawn (their hit surfaces); one not drawn yet, from its configured depth.
+   */
+  function getXrFocusDistance({ from = null, margin = XR_FOCUS_MARGIN_M, min = XR_FOCUS_MIN_M } = {}) {
+    const origin = from ?? getHeadPosition();
+    let nearest = Infinity;
     for (const key of hud?.ui?.order ?? []) {
       const win = hud.ui.windows?.[key];
       if (!win || Number(win.y) < HUD_HIDDEN_Y_BELOW) continue;
+      const hit = hud.objects?.windows?.[key]?.hit;
+      if (origin && hit?.getWorldPosition) {
+        const p = hit.getWorldPosition(new hit.position.constructor());
+        nearest = Math.min(nearest, Math.hypot(p.x - origin.x, p.y - origin.y, p.z - origin.z));
+        continue;
+      }
       const vrZ = Number(win.vrZ ?? 0);
       const radius = Number(vrDistance) - (Number.isFinite(vrZ) ? vrZ : 0) - HUD_VR_BASE_Z;
       if (Number.isFinite(radius)) nearest = Math.min(nearest, Math.max(radius, minRadius));
     }
+    if (!Number.isFinite(nearest)) nearest = Number(vrDistance);
     return Math.max(min, nearest - margin);
   }
 

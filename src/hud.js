@@ -713,7 +713,14 @@ export function createHudSystem(
     markDirty,
   });
   // In a headset, distance decides what is in front (hud-xr-scene-depth-runtime.js).
-  const _xrSceneDepthRuntime = createHudXrSceneDepthRuntime({ hud, renderer, vrDistance: _vrDistance, vrDepthMinRadius: _vrDepthMinRadius });
+  const _xrSceneDepthRuntime = createHudXrSceneDepthRuntime({
+    hud, renderer, vrDistance: _vrDistance, vrDepthMinRadius: _vrDepthMinRadius,
+    getHeadPosition: () => {
+      const head = getHeadCameraForHud();
+      head.updateMatrixWorld(true);
+      return head.getWorldPosition(new THREE.Vector3());
+    },
+  });
   const _desktopInputRuntime = installHudDesktopInputRuntime({
     renderer,
     dom,

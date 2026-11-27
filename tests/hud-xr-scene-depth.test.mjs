@@ -56,3 +56,14 @@ test("the focus distance is in front of every visible panel", () => {
   const { runtime: pushed } = setup({ windows: { close: { y: 0, vrZ: 4 } } });
   assert.equal(pushed.getXrFocusDistance(), 1.25, "a panel is never nearer than the minimum radius");
 });
+
+test("the focus distance measures shown panels where they are drawn, from the given point", () => {
+  const hitAt = (x, y, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1)); m.position.set(x, y, z); m.updateMatrixWorld(true); return m; };
+  const windows = { a: { y: 0 }, b: { y: 0 }, gone: { y: -5000 } };
+  const hud = { root: new THREE.Group(), ui: { order: ["a", "b", "gone"], windows },
+    objects: { windows: { a: { hit: hitAt(0, 1.6, -3) }, b: { hit: hitAt(0, 1.6, -4) }, gone: { hit: hitAt(0, 1.6, -1) } } } };
+  const runtime = createHudXrSceneDepthRuntime({ hud, renderer: { xr: { isPresenting: true } }, vrDistance: 4.2,
+    getHeadPosition: () => new THREE.Vector3(0, 1.6, 0) });
+  assert.ok(Math.abs(runtime.getXrFocusDistance() - 2.5) < 1e-9, "from the head: nearest panel 3 m, less the margin");
+  assert.ok(Math.abs(runtime.getXrFocusDistance({ from: new THREE.Vector3(0, 1.6, -1) }) - 1.5) < 1e-9, "from a point a meter in front");
+});
