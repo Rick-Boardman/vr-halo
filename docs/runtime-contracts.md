@@ -15,6 +15,11 @@ Applications provide world objects, domain interpretation, and service transport
   a window below it, the UI hit test, window hover (tooltips and the resize cursor)
   and desktop presses, wheel, double-click and context menu leave that point to the
   scene.
+- In a headset, distance decides what is in front: HUD materials test the scene's depth (they write
+  none), so scene content nearer than a panel hides it. `hudSystem.setXrSceneRayTest((origin, direction)
+  => distance | null)` reports the nearest scene hit along a controller ray; where it is nearer than the
+  panel the ray reaches, the HUD leaves that ray to the scene. `hudSystem.getXrFocusDistance()` is a
+  distance from the viewer in front of every visible panel, for bringing scene content forward.
 - Visible HUD text and controls render in WebGL. An invisible attached text input
   is used only as an input-method bridge where the immersive browser requires it.
 - Use a single application-provided Three.js instance. Do not import another copy

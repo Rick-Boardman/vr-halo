@@ -32,6 +32,7 @@ import { tickQualityCalibrations } from "./quality-calibration.js";
  * @param {() => void} deps.layoutContextMenu         Positions the context-menu overlay.
  * @param {() => void} deps.layoutTooltip             Positions the tooltip overlay.
  * @param {(pointer: object, dt: number) => void} deps.stepInput  Input step tick.
+ * @param {() => void} [deps.syncXrSceneDepth] Per-frame headset depth sync between the HUD and the scene.
  * @param {object} deps.hitMarker0                    VR hit marker 0 (visibility toggled).
  * @param {object} deps.hitMarker1                    VR hit marker 1 (visibility toggled).
  * @param {() => void} deps.endDragResize             Ends the current drag/resize interaction.
@@ -75,6 +76,7 @@ export function createHudFrameUpdateRuntime({
   renderWindow,
   windowTextRenderOrderRuntime,
   syncSceneLayers = null,
+  syncXrSceneDepth = null,
 }) {
   let _prevPresenting = !!renderer.xr.isPresenting;
 
@@ -264,6 +266,9 @@ export function createHudFrameUpdateRuntime({
       updateUi();
       hud._dirty = false;
     }
+    // In a headset the HUD tests the scene's depth; leaving it restores each material. After the UI pass, which
+    // rebuilds list meshes with their own settings.
+    syncXrSceneDepth?.();
   }
 
   return { update, updateUi };

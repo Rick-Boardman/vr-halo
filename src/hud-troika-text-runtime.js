@@ -806,11 +806,14 @@ export function createHudTroikaTextRuntime({
                   // no-op
                 }
                 try {
+                  // In a headset HUD text tests the scene's depth like the rest of the HUD
+                  // (hud-xr-scene-depth-runtime.js): scene content nearer than a panel hides its text too.
+                  const depthTest = this._depthTest || !!args[0]?.xr?.isPresenting;
                   const mat = obj.material;
                   if (Array.isArray(mat)) {
-                    for (const m of mat) _setMaterialHudText(m, this._depthTest);
+                    for (const m of mat) _setMaterialHudText(m, depthTest);
                   } else {
-                    _setMaterialHudText(mat, this._depthTest);
+                    _setMaterialHudText(mat, depthTest);
                   }
                 } catch {
                   // no-op

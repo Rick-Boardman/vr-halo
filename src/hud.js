@@ -111,6 +111,7 @@ import {
 } from "./hud-surface-style.js";
 import { createHudUiOverlays } from "./ui-overlays.js?v=control-hit-1";
 import { createHudSceneLayerRuntime } from "./hud-scene-layer-runtime.js";
+import { createHudXrSceneDepthRuntime } from "./hud-xr-scene-depth-runtime.js";
 import {
   fmtVec3,
   fmtRad,
@@ -710,6 +711,15 @@ export function createHudSystem(
     titleHeightPx: HUD_WINDOW_TITLE_HEIGHT_PX,
     groupRenderOrder: HUD_GROUP_RENDER_ORDER,
     markDirty,
+  });
+  // In a headset, distance decides what is in front (hud-xr-scene-depth-runtime.js).
+  const _xrSceneDepthRuntime = createHudXrSceneDepthRuntime({
+    hud, renderer, vrDistance: _vrDistance, vrDepthMinRadius: _vrDepthMinRadius,
+    getHeadPosition: () => {
+      const head = getHeadCameraForHud();
+      head.updateMatrixWorld(true);
+      return head.getWorldPosition(new THREE.Vector3());
+    },
   });
   const _desktopInputRuntime = installHudDesktopInputRuntime({
     renderer,
@@ -1368,6 +1378,7 @@ export function createHudSystem(
     setVrMoveDragRayT: _dragState.setVrMoveDragRayT,
     setVrMoveDragGrabU: _dragState.setVrMoveDragGrabU,
     setVrMoveDragGrabV: _dragState.setVrMoveDragGrabV,
+    sceneIsNearerAlongRay: (origin, direction, distance) => _xrSceneDepthRuntime.sceneIsNearerAlongRay(origin, direction, distance),
   });
 
   const { update, updateUi } = createHudFrameUpdateRuntime({
@@ -1401,6 +1412,7 @@ export function createHudSystem(
     renderWindow: _renderWindow,
     windowTextRenderOrderRuntime: _windowTextRenderOrderRuntime,
     syncSceneLayers: (renderOrderBaseFor) => _sceneLayerRuntime.syncSceneLayers(renderOrderBaseFor),
+    syncXrSceneDepth: () => _xrSceneDepthRuntime.syncHudDepth(),
   });
 
   // Initial placement
@@ -1472,6 +1484,9 @@ export function createHudSystem(
     raiseSceneLayer: (key, layer) => _sceneLayerRuntime.raiseSceneLayer(key, layer),
     lowerSceneLayer: (key) => _sceneLayerRuntime.lowerSceneLayer(key),
     isSceneLayerRaised: (key) => _sceneLayerRuntime.isSceneLayerRaised(key),
+    // Headset depth between the HUD and the scene (hud-xr-scene-depth-runtime.js).
+    setXrSceneRayTest: (test) => _xrSceneDepthRuntime.setXrSceneRayTest(test),
+    getXrFocusDistance: (options) => _xrSceneDepthRuntime.getXrFocusDistance(options),
     enterVR,
     exitVR,
   };
