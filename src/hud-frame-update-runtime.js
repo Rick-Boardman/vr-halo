@@ -158,8 +158,6 @@ export function createHudFrameUpdateRuntime({
   function update(dt) {
     const presenting = !!renderer.xr.isPresenting;
     hud.xr.presenting = presenting;
-    // In a headset the HUD tests the scene's depth; leaving it restores each material.
-    syncXrSceneDepth?.();
 
     // Desktop-only world hover outline. Uses last known client coords.
     const hoverOutline = getDesktopWorldHoverOutline();
@@ -268,6 +266,9 @@ export function createHudFrameUpdateRuntime({
       updateUi();
       hud._dirty = false;
     }
+    // In a headset the HUD tests the scene's depth; leaving it restores each material. After the UI pass, which
+    // rebuilds list meshes with their own settings.
+    syncXrSceneDepth?.();
   }
 
   return { update, updateUi };
