@@ -12,8 +12,9 @@ Applications provide world objects, domain interpretation, and service transport
   window opened, focused or brought forward afterwards; `apply` receives the HUD's
   group order and a render order between those windows, or `null` when lowered
   (`lowerSceneLayer`) and while presenting XR. Where `containsPoint` says it covers
-  a window below it, the UI hit test and desktop presses, wheel, double-click and
-  context menu leave that point to the scene.
+  a window below it, the UI hit test, window hover (tooltips and the resize cursor)
+  and desktop presses, wheel, double-click and context menu leave that point to the
+  scene.
 - Visible HUD text and controls render in WebGL. An invisible attached text input
   is used only as an input-method bridge where the immersive browser requires it.
 - Use a single application-provided Three.js instance. Do not import another copy

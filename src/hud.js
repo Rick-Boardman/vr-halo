@@ -1009,6 +1009,7 @@ export function createHudSystem(
     hitTestHotbarSlotIndex,
     copyTextToClipboard,
     normalizeEntriesToText,
+    sceneLayerOwnsPoint: (x, y) => _sceneLayerRuntime.sceneLayerOwnsPoint(x, y),
   });
 
   const _windowLifecycle = createHudWindowLifecycleRuntime({
