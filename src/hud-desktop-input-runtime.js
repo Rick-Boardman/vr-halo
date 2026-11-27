@@ -34,6 +34,7 @@ export function installHudDesktopInputRuntime({
   enableContextMenu = true,
   getTitleDoubleClickWindow = () => null,
   handleTitleDoubleClick = () => false,
+  sceneLayerOwnsPoint = () => false,
 } = {}) {
   // Track a single active pointer to avoid multi-touch racing.
   let _activePointerId = null;
@@ -86,6 +87,8 @@ export function installHudDesktopInputRuntime({
     if (!hud.pointer.active) {
       return;
     }
+    // Scene content raised over a window here owns the press (hud-scene-layer-runtime.js).
+    if (sceneLayerOwnsPoint(hud.pointer.x, hud.pointer.y)) return;
     if (e.button === 2) {
       hud.pointer.contextJustRequested = false;
       hud.pointer.down = false;
@@ -148,6 +151,7 @@ export function installHudDesktopInputRuntime({
 
     const px = hud.pointer.x;
     const py = hud.pointer.y;
+    if (sceneLayerOwnsPoint(px, py)) return;
 
     // Top-most window under pointer that has scrolling enabled
     for (let i = hud.ui.order.length - 1; i >= 0; i--) {
@@ -241,6 +245,7 @@ export function installHudDesktopInputRuntime({
         e.preventDefault();
         return;
       }
+      if (sceneLayerOwnsPoint(hud.pointer.x, hud.pointer.y)) return;
       hud.pointer.contextJustRequested = false;
       if (enableContextMenu) {
         hud.pointer.contextJustRequested = true;

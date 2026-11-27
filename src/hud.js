@@ -110,6 +110,7 @@ import {
   resolveHudTheme,
 } from "./hud-surface-style.js";
 import { createHudUiOverlays } from "./ui-overlays.js?v=control-hit-1";
+import { createHudSceneLayerRuntime } from "./hud-scene-layer-runtime.js";
 import {
   fmtVec3,
   fmtRad,
@@ -702,6 +703,14 @@ export function createHudSystem(
   // ------------------------------------------------------------
 
   const dom = renderer.domElement;
+  const _sceneLayerRuntime = createHudSceneLayerRuntime({
+    hud,
+    renderer,
+    rectContains,
+    titleHeightPx: HUD_WINDOW_TITLE_HEIGHT_PX,
+    groupRenderOrder: HUD_GROUP_RENDER_ORDER,
+    markDirty,
+  });
   const _desktopInputRuntime = installHudDesktopInputRuntime({
     renderer,
     dom,
@@ -718,6 +727,7 @@ export function createHudSystem(
     enableContextMenu: enableDesktopContextMenu !== false,
     getTitleDoubleClickWindow: (x, y) => _clickRuntime.getTitleDoubleClickWindow(x, y),
     handleTitleDoubleClick: (win, pointer) => _clickRuntime.handleTitleDoubleClick(win, pointer),
+    sceneLayerOwnsPoint: (x, y) => _sceneLayerRuntime.sceneLayerOwnsPoint(x, y),
   });
 
   // ------------------------------------------------------------
@@ -949,6 +959,7 @@ export function createHudSystem(
   }
 
   function bringToFront(key) {
+    _sceneLayerRuntime.noteWindowRaised(key);
     _interactionStateRuntime.bringToFront(key);
   }
 
@@ -1017,6 +1028,7 @@ export function createHudSystem(
     rectContains,
     getNormalizedClientPoint,
     titleHeightPx: HUD_WINDOW_TITLE_HEIGHT_PX,
+    sceneLayerOwnsPoint: (x, y) => _sceneLayerRuntime.sceneLayerOwnsPoint(x, y),
   });
 
   const _windowFactoryRuntime = createHudWindowFactoryRuntime({
@@ -1220,6 +1232,7 @@ export function createHudSystem(
   const _clickRuntime = createHudClickRuntime({
     hud,
     renderer,
+    sceneLayerOwnsPoint: (x, y) => _sceneLayerRuntime.sceneLayerOwnsPoint(x, y),
     uiOverlays: _uiOverlays,
     bringToFront,
     markDirty,
@@ -1386,6 +1399,7 @@ export function createHudSystem(
     windowObjectVisibilityRuntime: _windowObjectVisibilityRuntime,
     renderWindow: _renderWindow,
     windowTextRenderOrderRuntime: _windowTextRenderOrderRuntime,
+    syncSceneLayers: (renderOrderBaseFor) => _sceneLayerRuntime.syncSceneLayers(renderOrderBaseFor),
   });
 
   // Initial placement
@@ -1453,6 +1467,10 @@ export function createHudSystem(
     }),
     isPointOverUi: (px, py) => _windowStateRuntime.isPointOverUi(px, py),
     isClientPointOverUi: (clientX, clientY) => _windowStateRuntime.isClientPointOverUi(clientX, clientY),
+    // Scene content in the desktop window stack (hud-scene-layer-runtime.js).
+    raiseSceneLayer: (key, layer) => _sceneLayerRuntime.raiseSceneLayer(key, layer),
+    lowerSceneLayer: (key) => _sceneLayerRuntime.lowerSceneLayer(key),
+    isSceneLayerRaised: (key) => _sceneLayerRuntime.isSceneLayerRaised(key),
     enterVR,
     exitVR,
   };

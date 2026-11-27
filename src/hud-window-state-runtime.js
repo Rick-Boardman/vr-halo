@@ -20,6 +20,7 @@ export function createHudWindowStateRuntime({
   rectContains,
   getNormalizedClientPoint,
   titleHeightPx,
+  sceneLayerOwnsPoint = () => false,
 } = {}) {
   function setWindowLines(windowKey, entries, options = {}) {
     const w = hud.ui.windows?.[windowKey];
@@ -115,6 +116,8 @@ export function createHudWindowStateRuntime({
     const x = Number(px);
     const y = Number(py);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    // Scene content raised over the window here owns the point.
+    if (sceneLayerOwnsPoint(x, y)) return false;
 
     const menu = hud.overlay?.contextMenu;
     if (menu?.open) {

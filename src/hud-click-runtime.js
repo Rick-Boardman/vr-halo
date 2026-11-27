@@ -88,6 +88,7 @@ export function createHudClickRuntime({
   toggleHelp = null,
   toggleSettings = null,
   restoreAllHidden = null,
+  sceneLayerOwnsPoint = () => false,
 } = {}) {
   function findVisibleLineIndex(meta, localY, lineH) {
     if (!Array.isArray(meta) || !meta.length || !Number.isFinite(localY)) return -1;
@@ -175,7 +176,7 @@ export function createHudClickRuntime({
   }
 
   function getTitleDoubleClickWindow(px, py) {
-    if (hud.overlay?.contextMenu?.open || getDragMode?.()) return null;
+    if (hud.overlay?.contextMenu?.open || getDragMode?.() || sceneLayerOwnsPoint(px, py)) return null;
     for (const key of getWindowHitTestOrder()) {
       const win = hud.ui.windows[key];
       const h = win.collapsed ? titleHeightPx : win.h;
@@ -214,6 +215,8 @@ export function createHudClickRuntime({
     const allowDragStart = pointer?.down !== false;
 
     if (uiOverlays.handleContextMenuClick(pointer)) return;
+    // Scene content raised over a window here owns the press: the window beneath neither takes it nor comes forward.
+    if (sceneLayerOwnsPoint(px, py)) return;
 
     const vrBtnSlop = renderer.xr.isPresenting ? 6 : 0;
     const vrResizeSlop = renderer.xr.isPresenting ? 10 : 0;
